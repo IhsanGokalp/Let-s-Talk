@@ -1,4 +1,5 @@
 class UserData {
+  // Define static lists for language and age range options
   static final List<String> languages = [
     'Mandarin Chinese',
     'Spanish',
@@ -21,8 +22,21 @@ class UserData {
     '51 - 55'
   ];
 
+  // User's name (nullable, will be filled later)
+  String? name;
+
+  // Other user-selected fields
   String? selectedLanguage;
   String? selectedAgeRange;
-  Set<String> selectedTopics = {}; // Holds the selected topics
-  String? selectedBuddy; // Holds the selected AI buddy name
+  Set<String> selectedTopics = {}; // User's interests (topics)
+  String? selectedBuddy; // AI buddy name
+
+  // Constructor (optional, could add default values if necessary)
+  UserData({
+    this.name,
+    this.selectedLanguage,
+    this.selectedAgeRange,
+    this.selectedBuddy,
+    Set<String>? selectedTopics,
+  }) : selectedTopics = selectedTopics ?? {};
 }
