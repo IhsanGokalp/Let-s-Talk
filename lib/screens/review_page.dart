@@ -1,10 +1,40 @@
 import 'package:flutter/material.dart';
 import '../models/user_data.dart';
 
-class ReviewPage extends StatelessWidget {
+class ReviewPage extends StatefulWidget {
   final UserData userData;
 
   ReviewPage({required this.userData});
+
+  @override
+  _ReviewPageState createState() => _ReviewPageState();
+}
+
+class _ReviewPageState extends State<ReviewPage> {
+  String? selectedLanguage;
+  String? selectedAgeRange;
+  Set<String> selectedTopics = {};
+  String? selectedBuddy;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedLanguage = widget.userData.selectedLanguage;
+    selectedAgeRange = widget.userData.selectedAgeRange;
+    selectedTopics = Set.from(widget.userData.selectedTopics);
+
+    // Ensure selectedBuddy is valid or reset to null if not in buddies list
+    selectedBuddy = UserData.buddies.contains(widget.userData.selectedBuddy)
+        ? widget.userData.selectedBuddy
+        : null;
+  }
+
+  void updateUserData() {
+    widget.userData.selectedLanguage = selectedLanguage;
+    widget.userData.selectedAgeRange = selectedAgeRange;
+    widget.userData.selectedTopics = selectedTopics;
+    widget.userData.selectedBuddy = selectedBuddy;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,45 +56,75 @@ class ReviewPage extends StatelessWidget {
             ),
             SizedBox(height: 20),
 
-            // Main Language Display
+            // Editable Main Language
             Text(
               "What is your main language?",
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
             SizedBox(height: 8),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                userData.selectedLanguage ?? "Not selected",
-                style: TextStyle(fontSize: 16),
+            DropdownButtonFormField<String>(
+              value: UserData.languages.contains(selectedLanguage)
+                  ? selectedLanguage
+                  : null,
+              hint: Text("Select your language"),
+              onChanged: (String? newValue) {
+                setState(() {
+                  selectedLanguage = newValue;
+                  updateUserData();
+                });
+              },
+              items: UserData.languages
+                  .map<DropdownMenuItem<String>>((String language) {
+                return DropdownMenuItem<String>(
+                  value: language,
+                  child: Text(language),
+                );
+              }).toList(),
+              decoration: InputDecoration(
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
             ),
             SizedBox(height: 20),
 
-            // Age Range Display
+            // Editable Age Range
             Text(
               "How old are you?",
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
             SizedBox(height: 8),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                userData.selectedAgeRange ?? "Not selected",
-                style: TextStyle(fontSize: 16),
+            DropdownButtonFormField<String>(
+              value: UserData.ageRanges.contains(selectedAgeRange)
+                  ? selectedAgeRange
+                  : null,
+              hint: Text("Select your age range"),
+              onChanged: (String? newValue) {
+                setState(() {
+                  selectedAgeRange = newValue;
+                  updateUserData();
+                });
+              },
+              items: UserData.ageRanges
+                  .map<DropdownMenuItem<String>>((String ageRange) {
+                return DropdownMenuItem<String>(
+                  value: ageRange,
+                  child: Text(ageRange),
+                );
+              }).toList(),
+              decoration: InputDecoration(
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
             ),
             SizedBox(height: 20),
 
-            // Topics of Interest Display
+            // Editable Topics of Interest
             Text(
               "Which topics are you interested in?",
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
@@ -73,40 +133,55 @@ class ReviewPage extends StatelessWidget {
             Wrap(
               spacing: 8.0,
               runSpacing: 4.0,
-              children: userData.selectedTopics.isNotEmpty
-                  ? userData.selectedTopics.map((topic) {
-                      return Chip(
-                        label: Text(
-                          topic,
-                          style: TextStyle(color: Colors.white),
-                        ),
-                        backgroundColor:
-                            Color(0xFF98A882), // Custom green color for chips
-                      );
-                    }).toList()
-                  : [
-                      Text("No topics selected",
-                          style:
-                              TextStyle(fontSize: 16, color: Colors.grey[700]))
-                    ],
+              children: UserData.topics.map((topic) {
+                final isSelected = selectedTopics.contains(topic);
+                return ChoiceChip(
+                  label: Text(topic),
+                  selected: isSelected,
+                  onSelected: (bool selected) {
+                    setState(() {
+                      isSelected
+                          ? selectedTopics.remove(topic)
+                          : selectedTopics.add(topic);
+                      updateUserData();
+                    });
+                  },
+                  selectedColor: Color(0xFF98A882),
+                );
+              }).toList(),
             ),
             SizedBox(height: 20),
 
-            // AI Buddy Display
+            // Editable AI Buddy
             Text(
               "Your Speaking Buddy:",
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
             SizedBox(height: 8),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                userData.selectedBuddy ?? "No buddy selected",
-                style: TextStyle(fontSize: 16),
+            DropdownButtonFormField<String>(
+              value: UserData.buddies.contains(selectedBuddy)
+                  ? selectedBuddy
+                  : null,
+              hint: Text("Select your buddy"),
+              onChanged: (String? newValue) {
+                setState(() {
+                  selectedBuddy = newValue;
+                  updateUserData();
+                });
+              },
+              items: UserData.buddies
+                  .map<DropdownMenuItem<String>>((String buddy) {
+                return DropdownMenuItem<String>(
+                  value: buddy,
+                  child: Text(buddy),
+                );
+              }).toList(),
+              decoration: InputDecoration(
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
             ),
 
@@ -117,7 +192,7 @@ class ReviewPage extends StatelessWidget {
               alignment: Alignment.center,
               child: ElevatedButton(
                 onPressed: () {
-                  // Navigate to the main conversation page or start the conversation
+                  // Proceed to the main conversation page
                   Navigator.pushNamed(context,
                       '/mainConversation'); // Replace with actual route if needed
                 },

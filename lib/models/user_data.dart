@@ -21,19 +21,39 @@ class UserData {
     '46 - 50',
     '51 - 55'
   ];
+  static final List<String> topics = [
+    'Literature',
+    'Sports',
+    'Music',
+    'Cooking',
+    'Cartoons',
+    'Drama',
+    'Technology',
+    'Travel',
+    'Movies',
+    'Videogames',
+    'History',
+    'TV Shows'
+  ];
 
+  static final List<String> buddies = [
+    'Emir (Male)',
+    'Kerem (Male)',
+    'Yusuf (Male)',
+    'Elif (Female)',
+    'Aylin (Female)',
+    'Defne (Female)'
+  ];
   // User's name (nullable, will be filled later)
   String? name;
 
   // Other user-selected fields
   String? selectedLanguage;
   String? selectedAgeRange;
-  Set<String> selectedTopics = {}; // User's interests (topics)
-  String? selectedBuddy; // AI buddy name
+  Set<String> selectedTopics = {};
+  String? selectedBuddy;
 
-  // Constructor (optional, could add default values if necessary)
   UserData({
-    this.name,
     this.selectedLanguage,
     this.selectedAgeRange,
     this.selectedBuddy,
