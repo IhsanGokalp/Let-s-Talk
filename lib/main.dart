@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 import 'routes.dart';
 
-void main() => runApp(MyApp());
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+void main() async {
+  // Load the .env file explicitly for web
+  await dotenv.load(fileName: "assets/.env");
+
+  runApp(MyApp());
+}
 
 class MyApp extends StatelessWidget {
   @override

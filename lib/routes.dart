@@ -5,6 +5,7 @@ import 'screens/setup_page2.dart';
 import 'screens/setup_page3.dart';
 import 'screens/review_page.dart';
 import 'models/user_data.dart';
+import '../screens/conversation_activity.dart';
 
 /// Define the initial route and any routes that do not require arguments
 final Map<String, WidgetBuilder> staticRoutes = {
@@ -26,6 +27,14 @@ Route<dynamic>? generateRoute(RouteSettings settings) {
     case '/review':
       final userData = settings.arguments as UserData;
       return MaterialPageRoute(builder: (_) => ReviewPage(userData: userData));
+
+    case '/mainConversation':
+      final userData = settings.arguments as UserData;
+      return MaterialPageRoute(
+        builder: (_) => ConversationActivity(
+            userData: userData), // Pass UserData to ConversationActivity
+      );
+    // Pass user data
 
     default:
       return null; // If the route is not defined, return null.

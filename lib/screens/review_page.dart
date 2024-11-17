@@ -192,9 +192,12 @@ class _ReviewPageState extends State<ReviewPage> {
               alignment: Alignment.center,
               child: ElevatedButton(
                 onPressed: () {
-                  // Proceed to the main conversation page
-                  Navigator.pushNamed(context,
-                      '/mainConversation'); // Replace with actual route if needed
+                  // Navigate to ConversationActivity and pass userData
+                  Navigator.pushNamed(
+                    context,
+                    '/mainConversation',
+                    arguments: widget.userData, // Pass the updated user data
+                  );
                 },
                 child: Text("Begin Conversation"),
                 style: ElevatedButton.styleFrom(
