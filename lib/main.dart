@@ -4,9 +4,10 @@ import 'routes.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
-  // Load the .env file explicitly for web
-  await dotenv.load(fileName: ".env");
+  // Add this line to initialize Flutter bindings
+  WidgetsFlutterBinding.ensureInitialized();
 
+  await dotenv.load(fileName: ".env");
   runApp(MyApp());
 }
 

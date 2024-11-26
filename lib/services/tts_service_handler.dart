@@ -40,6 +40,11 @@ class TTSServiceHandler {
     _callback = callback;
   }
 
+  Future<String> _getAudioFilePath() async {
+    final directory = await getApplicationDocumentsDirectory();
+    return '${directory.path}/tts_audio_${DateTime.now().millisecondsSinceEpoch}.mp3';
+  }
+
   Future<void> convertTextToSpeech(
     String text,
     String voice,
@@ -49,6 +54,8 @@ class TTSServiceHandler {
       _callback = callback;
       final String escapedText =
           text.replaceAll('\n', '\\n').replaceAll('"', '\\"');
+
+      debugPrint('$TAG Converting text to speech: $escapedText');
 
       final response = await http.post(
         Uri.parse(BASE_URL),
@@ -63,6 +70,8 @@ class TTSServiceHandler {
         }),
       );
 
+      debugPrint('$TAG Response status: ${response.statusCode}');
+
       if (response.statusCode == 200) {
         debugPrint('$TAG TTS Response: Received audio data');
         await _playAudioFromBytes(response.bodyBytes, text, callback);
@@ -70,7 +79,7 @@ class TTSServiceHandler {
         debugPrint(
             '$TAG Failed to get TTS response. Response code: ${response.statusCode}');
         debugPrint('$TAG Response error body: ${response.body}');
-        throw Exception('Failed to get TTS response');
+        throw Exception('Failed to get TTS response: ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('$TAG Error getting TTS response: $e');
@@ -83,11 +92,14 @@ class TTSServiceHandler {
     String text,
     TextToSpeechCallback callback,
   ) async {
+    File? tempAudioFile;
     try {
-      // Create temporary file
-      final tempDir = await getTemporaryDirectory();
-      final tempAudioFile = File('${tempDir.path}/tts_audio.mp3');
+      // Get file path
+      final filePath = await _getAudioFilePath();
+      tempAudioFile = File(filePath);
       await tempAudioFile.writeAsBytes(audioData);
+
+      debugPrint('$TAG Audio file created at: ${tempAudioFile.path}');
 
       // Notify start
       callback.onStart(text);
@@ -102,23 +114,47 @@ class TTSServiceHandler {
           await _audioPlayer.getDuration() ?? const Duration(seconds: 1);
       final wordDelay = duration.inMilliseconds ~/ words.length;
 
+      debugPrint('$TAG Word delay: $wordDelay ms');
+
       // Schedule word progress callbacks
       for (var i = 0; i < words.length; i++) {
         final timer = Timer(
           Duration(milliseconds: wordDelay * i),
-          () => callback.onProgress(words[i]),
+          () {
+            callback.onProgress(words[i]);
+            debugPrint('$TAG Speaking word: ${words[i]}');
+          },
         );
         _pendingTimers.add(timer);
       }
 
       // Clean up file after playback
-      _audioPlayer.onPlayerComplete.listen((_) {
-        tempAudioFile.delete();
+      _audioPlayer.onPlayerComplete.listen((_) async {
+        try {
+          if (tempAudioFile != null && await tempAudioFile.exists()) {
+            await tempAudioFile.delete();
+            debugPrint('$TAG Temporary audio file deleted');
+          }
+        } catch (e) {
+          debugPrint('$TAG Error deleting temporary file: $e');
+        }
       });
     } catch (e) {
       debugPrint('$TAG Error playing audio: $e');
       await _audioPlayer.stop();
       _isPlaying = false;
+
+      // Clean up file if there's an error
+      if (tempAudioFile != null) {
+        try {
+          if (await tempAudioFile.exists()) {
+            await tempAudioFile.delete();
+            debugPrint('$TAG Temporary audio file deleted after error');
+          }
+        } catch (deleteError) {
+          debugPrint('$TAG Error deleting temporary file: $deleteError');
+        }
+      }
       rethrow;
     }
   }
@@ -138,11 +174,34 @@ class TTSServiceHandler {
     debugPrint('$TAG endConversation');
   }
 
+  Future<void> pauseSpeech() async {
+    if (_isPlaying) {
+      await _audioPlayer.pause();
+      _isPlaying = false;
+      debugPrint('$TAG Speech paused');
+    }
+  }
+
+  Future<void> resumeSpeech() async {
+    if (!_isPlaying) {
+      await _audioPlayer.resume();
+      _isPlaying = true;
+      debugPrint('$TAG Speech resumed');
+    }
+  }
+
+  Future<void> stopSpeech() async {
+    await _audioPlayer.stop();
+    _isPlaying = false;
+    debugPrint('$TAG Speech stopped');
+  }
+
   bool get isPlaying => _isPlaying;
 
   void dispose() {
     endConversation();
     _audioPlayer.dispose();
+    debugPrint('$TAG Disposed');
   }
 }
 
@@ -151,81 +210,4 @@ abstract class TextToSpeechCallback {
   void onStart(String text);
   void onProgress(String word);
   void onComplete();
-}
-
-// Example usage:
-class MyConversationScreen extends StatefulWidget {
-  @override
-  _MyConversationScreenState createState() => _MyConversationScreenState();
-}
-
-class _MyConversationScreenState extends State<MyConversationScreen>
-    implements TextToSpeechCallback {
-  late TTSServiceHandler _ttsHandler;
-  String _currentWord = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _ttsHandler = TTSServiceHandler(apiKey: 'your-api-key');
-    _ttsHandler.setCallback(this);
-  }
-
-  Future<void> _speakText(String text) async {
-    try {
-      await _ttsHandler.convertTextToSpeech(
-        text,
-        'alloy',
-        this,
-      );
-    } catch (e) {
-      // Handle error
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
-    }
-  }
-
-  @override
-  void onStart(String text) {
-    setState(() {
-      // Handle speech start
-    });
-  }
-
-  @override
-  void onProgress(String word) {
-    setState(() {
-      _currentWord = word;
-    });
-  }
-
-  @override
-  void onComplete() {
-    setState(() {
-      _currentWord = '';
-      // Handle speech completion
-    });
-  }
-
-  @override
-  void dispose() {
-    _ttsHandler.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          Text('Current word: $_currentWord'),
-          ElevatedButton(
-            onPressed: () => _speakText('Hello, how are you?'),
-            child: Text('Speak'),
-          ),
-        ],
-      ),
-    );
-  }
 }
