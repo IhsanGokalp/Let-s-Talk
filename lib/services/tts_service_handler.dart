@@ -2,11 +2,9 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
-import 'dart:typed_data';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 class TTSServiceHandler {
@@ -65,7 +63,35 @@ class TTSServiceHandler {
 
       if (response.statusCode == 200) {
         debugPrint('$TAG TTS Response: Received audio data');
-        await _playAudioFromBytes(response.bodyBytes, text, callback);
+
+        // Create URL from audio data for web
+        final blob = html.Blob([response.bodyBytes]);
+        final url = html.Url.createObjectUrlFromBlob(blob);
+
+        // Notify start
+        callback.onStart(text);
+
+        // Play audio
+        await _audioPlayer.play(UrlSource(url));
+        _isPlaying = true;
+
+        // Calculate word timing
+        final words = text.split(' ');
+        final wordDelay = 500; // Approximate 500ms per word
+
+        // Schedule word progress callbacks
+        for (var i = 0; i < words.length; i++) {
+          final timer = Timer(
+            Duration(milliseconds: wordDelay * i),
+            () => callback.onProgress(words[i]),
+          );
+          _pendingTimers.add(timer);
+        }
+
+        // Clean up URL after playback
+        _audioPlayer.onPlayerComplete.listen((_) {
+          html.Url.revokeObjectUrl(url);
+        });
       } else {
         debugPrint(
             '$TAG Failed to get TTS response. Response code: ${response.statusCode}');
@@ -74,49 +100,6 @@ class TTSServiceHandler {
       }
     } catch (e) {
       debugPrint('$TAG Error getting TTS response: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> _playAudioFromBytes(
-    Uint8List audioData,
-    String text,
-    TextToSpeechCallback callback,
-  ) async {
-    try {
-      // Create temporary file
-      final tempDir = await getTemporaryDirectory();
-      final tempAudioFile = File('${tempDir.path}/tts_audio.mp3');
-      await tempAudioFile.writeAsBytes(audioData);
-
-      // Notify start
-      callback.onStart(text);
-
-      // Play audio
-      await _audioPlayer.play(DeviceFileSource(tempAudioFile.path));
-      _isPlaying = true;
-
-      // Calculate word timing
-      final words = text.split(' ');
-      final duration =
-          await _audioPlayer.getDuration() ?? const Duration(seconds: 1);
-      final wordDelay = duration.inMilliseconds ~/ words.length;
-
-      // Schedule word progress callbacks
-      for (var i = 0; i < words.length; i++) {
-        final timer = Timer(
-          Duration(milliseconds: wordDelay * i),
-          () => callback.onProgress(words[i]),
-        );
-        _pendingTimers.add(timer);
-      }
-
-      // Clean up file after playback
-      _audioPlayer.onPlayerComplete.listen((_) {
-        tempAudioFile.delete();
-      });
-    } catch (e) {
-      debugPrint('$TAG Error playing audio: $e');
       await _audioPlayer.stop();
       _isPlaying = false;
       rethrow;
