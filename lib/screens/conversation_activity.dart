@@ -24,7 +24,7 @@ class _ConversationActivityState extends State<ConversationActivity>
   final TextEditingController _conversationController = TextEditingController();
   bool _isProcessing = false;
   bool _isConversationActive = false;
-  String _currentWord = '';
+  bool _isSpeaking = false;
   final List<Map<String, String>> _conversationHistory = [];
 
   @override
@@ -57,8 +57,9 @@ class _ConversationActivityState extends State<ConversationActivity>
   void _processSpeechResult(String text) {
     debugPrint('Processing speech result: $text');
 
-    if (_chatGPTServiceHandler == null) {
-      debugPrint('Error: ChatGPT handler is null');
+    if (_chatGPTServiceHandler == null || !_isConversationActive) {
+      debugPrint(
+          'Error: ChatGPT handler is null or conversation is not active');
       return;
     }
 
@@ -72,16 +73,23 @@ class _ConversationActivityState extends State<ConversationActivity>
     });
 
     try {
+      // Stop listening while processing the response
+      _speechHandler?.stopListening();
+
       _chatGPTServiceHandler!.generateTextAndConvertToSpeech(
         text,
         _conversationHistory,
       );
-      debugPrint('Request sent to ChatGPT with conversation history');
+      debugPrint('Request sent to ChatGPT successfully');
     } catch (e, stackTrace) {
       debugPrint('Error calling ChatGPT: $e');
       debugPrint('Stack trace: $stackTrace');
       setState(() {
         _isProcessing = false;
+        // Only restart listening if there was an error
+        if (_isConversationActive) {
+          _speechHandler?.startListening();
+        }
       });
     }
   }
@@ -93,9 +101,6 @@ class _ConversationActivityState extends State<ConversationActivity>
       return;
     }
 
-    // Stop listening while AI is responding
-    _speechHandler?.stopListening();
-
     setState(() {
       _isProcessing = false;
       _conversationHistory.add({
@@ -103,6 +108,8 @@ class _ConversationActivityState extends State<ConversationActivity>
         "content": response,
       });
       _conversationController.text += "Elif: $response\n\n";
+      // Keep _isProcessing true until TTS completes
+      // It will be set to false in onComplete
     });
   }
 
@@ -121,6 +128,7 @@ class _ConversationActivityState extends State<ConversationActivity>
         _isProcessing = false;
       });
       _speechHandler?.startListening();
+      debugPrint('Conversation started');
     }
   }
 
@@ -132,31 +140,36 @@ class _ConversationActivityState extends State<ConversationActivity>
       });
       _speechHandler?.stopListening();
       _ttsServiceHandler?.endConversation();
+      debugPrint('Conversation ended');
     }
   }
 
   @override
   void onStart(String text) {
     debugPrint('Started speaking: $text');
+    setState(() {
+      _isSpeaking = true;
+    });
   }
 
   @override
   void onProgress(String word) {
-    setState(() {
-      _currentWord = word;
-    });
     debugPrint('Speaking word: $word');
   }
 
   @override
   void onComplete() {
     debugPrint('TTS Complete');
+    setState(() {
+      _isSpeaking = false;
+    });
+
+    // Restart listening after TTS completes
     if (_speechHandler != null && mounted && _isConversationActive) {
-      // Add a delay to ensure TTS has fully finished
       Future.delayed(Duration(milliseconds: 300), () {
         if (_isConversationActive && mounted) {
           debugPrint('Restarting listening after TTS completion');
-          _speechHandler?.startListening();
+          _speechHandler?.startListening(); // Start the microphone again
         }
       });
     }
@@ -172,10 +185,33 @@ class _ConversationActivityState extends State<ConversationActivity>
 
   @override
   Widget build(BuildContext context) {
+    debugPrint(
+        'Building UI - isProcessing: $_isProcessing, isConversationActive: $_isConversationActive, isListening: ${_speechHandler?.isListening}');
+
     return Scaffold(
       appBar: AppBar(
         title: Text("${widget.userData.name} Let's Talk"),
         backgroundColor: Colors.white,
+        actions: [
+          // Add conversation state indicator
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                if (_isProcessing)
+                  Icon(Icons.sync, color: Colors.orange)
+                else if (_speechHandler?.isListening ?? false)
+                  Icon(Icons.mic, color: Colors.green)
+                else if (_ttsServiceHandler?.isPlaying ?? false)
+                  Icon(Icons.volume_up, color: Colors.blue)
+                else
+                  Icon(Icons.mic_off, color: Colors.red),
+                SizedBox(width: 8),
+                Text(_getStatusText()),
+              ],
+            ),
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -196,14 +232,15 @@ class _ConversationActivityState extends State<ConversationActivity>
             SizedBox(height: 20),
             Center(
               child: DotWaveformAnimator(
-                isVisible: _speechHandler?.isListening ?? false,
+                isVisible: (_speechHandler?.isListening ?? false) &&
+                    _isConversationActive,
                 soundLevelStream: _speechHandler?.soundLevelStream,
               ),
             ),
-            if (_currentWord.isNotEmpty)
+            if (_isSpeaking)
               Center(
                 child: Text(
-                  _currentWord,
+                  'Speaking...',
                   style: TextStyle(fontSize: 16, color: Colors.blue),
                 ),
               ),
@@ -244,5 +281,13 @@ class _ConversationActivityState extends State<ConversationActivity>
         ),
       ),
     );
+  }
+
+  String _getStatusText() {
+    if (_isProcessing) return 'Processing...';
+    if (_speechHandler?.isListening ?? false) return 'Listening';
+    if (_ttsServiceHandler?.isPlaying ?? false) return 'Speaking';
+    if (_isConversationActive) return 'Ready';
+    return 'Inactive';
   }
 }
