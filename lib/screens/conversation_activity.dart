@@ -63,6 +63,9 @@ class _ConversationActivityState extends State<ConversationActivity>
       return;
     }
 
+    // Stop listening while processing
+    _speechHandler?.stopListening();
+
     setState(() {
       _isProcessing = true;
       _conversationHistory.add({
@@ -73,9 +76,6 @@ class _ConversationActivityState extends State<ConversationActivity>
     });
 
     try {
-      // Stop listening while processing the response
-      _speechHandler?.stopListening();
-
       _chatGPTServiceHandler!.generateTextAndConvertToSpeech(
         text,
         _conversationHistory,
@@ -86,7 +86,7 @@ class _ConversationActivityState extends State<ConversationActivity>
       debugPrint('Stack trace: $stackTrace');
       setState(() {
         _isProcessing = false;
-        // Only restart listening if there was an error
+        // Restart listening if there was an error
         if (_isConversationActive) {
           _speechHandler?.startListening();
         }
@@ -108,9 +108,13 @@ class _ConversationActivityState extends State<ConversationActivity>
         "content": response,
       });
       _conversationController.text += "Elif: $response\n\n";
-      // Keep _isProcessing true until TTS completes
-      // It will be set to false in onComplete
     });
+
+    // Restart listening after processing the response
+    if (_isConversationActive && mounted) {
+      debugPrint('Restarting listening after AI response');
+      _speechHandler?.startListening();
+    }
   }
 
   void _onAIError(String error) {
@@ -162,17 +166,10 @@ class _ConversationActivityState extends State<ConversationActivity>
     debugPrint('TTS Complete');
     setState(() {
       _isSpeaking = false;
+      _isProcessing = false;
     });
-
-    // Restart listening after TTS completes
-    if (_speechHandler != null && mounted && _isConversationActive) {
-      Future.delayed(Duration(milliseconds: 300), () {
-        if (_isConversationActive && mounted) {
-          debugPrint('Restarting listening after TTS completion');
-          _speechHandler?.startListening(); // Start the microphone again
-        }
-      });
-    }
+    // Remove the code that restarts listening since we're keeping it on
+    // No need to call _speechHandler?.startListening() here
   }
 
   @override
