@@ -25,6 +25,8 @@ class _ConversationActivityState extends State<ConversationActivity>
   bool _isProcessing = false;
   bool _isConversationActive = false;
   bool _isSpeaking = false;
+  bool _hasTalked = false;
+  bool _conversationEnded = false;
   final List<Map<String, String>> _conversationHistory = [];
 
   @override
@@ -73,6 +75,7 @@ class _ConversationActivityState extends State<ConversationActivity>
         "content": text,
       });
       _conversationController.text += "User: $text\n\n";
+      _hasTalked = true;
     });
 
     try {
@@ -126,26 +129,78 @@ class _ConversationActivityState extends State<ConversationActivity>
   }
 
   void _startConversation() {
-    if (_speechHandler != null && !_isConversationActive) {
-      setState(() {
-        _isConversationActive = true;
-        _isProcessing = false;
-      });
-      _speechHandler?.startListening();
-      debugPrint('Conversation started');
+    if (_conversationEnded) {
+      _showWarningDialog();
+    } else {
+      if (_speechHandler != null && !_isConversationActive) {
+        setState(() {
+          _isConversationActive = true;
+          _isProcessing = false;
+        });
+        _speechHandler?.startListening();
+      }
     }
   }
 
   void _stopConversation() {
-    if (_speechHandler != null) {
+    if (_hasTalked) {
+      _showPurchaseDialog();
+    } else {
+      _speechHandler?.stopListening();
       setState(() {
         _isConversationActive = false;
         _isProcessing = false;
+        _conversationEnded = true;
       });
-      _speechHandler?.stopListening();
-      _ttsServiceHandler?.endConversation();
-      debugPrint('Conversation ended');
     }
+  }
+
+  void _showWarningDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Warning"),
+          content: Text(
+              "You have already completed a conversation. Please purchase the app to continue."),
+          actions: [
+            TextButton(
+              child: Text("OK"),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showPurchaseDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Purchase Required"),
+          content: Text(
+              "You have reached the limit for free conversations. Please purchase the app to continue."),
+          actions: [
+            TextButton(
+              child: Text("Cancel"),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text("Purchase"),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -246,10 +301,9 @@ class _ConversationActivityState extends State<ConversationActivity>
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 ElevatedButton(
-                  onPressed: _isConversationActive ? null : _startConversation,
+                  onPressed: _startConversation,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        _isConversationActive ? Colors.grey : Colors.blue,
+                    backgroundColor: Colors.blue,
                     padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                   ),
                   child: Text(
@@ -260,7 +314,7 @@ class _ConversationActivityState extends State<ConversationActivity>
                   ),
                 ),
                 ElevatedButton(
-                  onPressed: _isConversationActive ? _stopConversation : null,
+                  onPressed: _stopConversation,
                   style: ElevatedButton.styleFrom(
                     backgroundColor:
                         _isConversationActive ? Colors.red : Colors.grey,
