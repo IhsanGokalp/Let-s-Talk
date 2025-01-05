@@ -196,30 +196,6 @@ class TTSServiceHandler {
     debugPrint('$TAG endConversation');
   }
 
-  Future<void> pauseSpeech() async {
-    if (_isPlaying) {
-      await _audioPlayer.pause();
-      _isPlaying = false;
-      debugPrint('$TAG Speech paused');
-    }
-  }
-
-  Future<void> resumeSpeech() async {
-    if (!_isPlaying) {
-      await _audioPlayer.resume();
-      _isPlaying = true;
-      debugPrint('$TAG Speech resumed');
-    }
-  }
-
-  Future<void> stopSpeech() async {
-    await _audioPlayer.stop();
-    _isPlaying = false;
-    debugPrint('$TAG Speech stopped');
-  }
-
-  bool get isPlaying => _isPlaying;
-
   void dispose() {
     stopSpeech();
     _audioPlayer.dispose();
