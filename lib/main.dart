@@ -7,7 +7,7 @@ void main() async {
   // Add this line to initialize Flutter bindings
   WidgetsFlutterBinding.ensureInitialized();
 
-  await dotenv.load(fileName: ".env");
+  await dotenv.load(fileName: "assets/.env");
   runApp(MyApp());
 }
 
