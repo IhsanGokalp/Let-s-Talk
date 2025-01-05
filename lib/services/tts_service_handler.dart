@@ -1,13 +1,12 @@
 // lib/services/tts_service_handler.dart
-
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'package:flutter/material.dart';
 import 'dart:typed_data';
-import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:http/http.dart' as http;
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 
 class TTSServiceHandler {
   static const String TAG = "TTSServiceHandler";
@@ -16,7 +15,6 @@ class TTSServiceHandler {
   final String apiKey;
   final AudioPlayer _audioPlayer = AudioPlayer();
   final List<Timer> _pendingTimers = [];
-
   TextToSpeechCallback? _callback;
   bool _isPlaying = false;
 
@@ -26,12 +24,13 @@ class TTSServiceHandler {
 
   void _initAudioPlayer() {
     _audioPlayer.onPlayerComplete.listen((_) {
+      debugPrint('$TAG Audio playback completed');
       _isPlaying = false;
       _callback?.onComplete();
-      debugPrint('$TAG on complete tts');
     });
 
     _audioPlayer.onPlayerStateChanged.listen((PlayerState state) {
+      debugPrint('$TAG Player state changed: $state');
       _isPlaying = state == PlayerState.playing;
     });
   }
@@ -51,7 +50,9 @@ class TTSServiceHandler {
     TextToSpeechCallback callback,
   ) async {
     try {
+      debugPrint('$TAG Starting TTS conversion for text: $text');
       _callback = callback;
+
       final String escapedText =
           text.replaceAll('\n', '\\n').replaceAll('"', '\\"');
 
@@ -73,8 +74,8 @@ class TTSServiceHandler {
       debugPrint('$TAG Response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        debugPrint('$TAG TTS Response: Received audio data');
-        await _playAudioFromBytes(response.bodyBytes, text, callback);
+        debugPrint('$TAG TTS API response received successfully');
+        await _playAudio(response.bodyBytes, text, callback);
       } else {
         debugPrint(
             '$TAG Failed to get TTS response. Response code: ${response.statusCode}');
@@ -82,12 +83,12 @@ class TTSServiceHandler {
         throw Exception('Failed to get TTS response: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('$TAG Error getting TTS response: $e');
+      debugPrint('$TAG Error in TTS conversion: $e');
       rethrow;
     }
   }
 
-  Future<void> _playAudioFromBytes(
+  Future<void> _playAudio(
     Uint8List audioData,
     String text,
     TextToSpeechCallback callback,
@@ -101,15 +102,24 @@ class TTSServiceHandler {
 
       debugPrint('$TAG Audio file created at: ${tempAudioFile.path}');
 
-      // Notify start
+      // Notify start of speech
       callback.onStart(text);
 
-      // Play audio
-      await _audioPlayer.play(DeviceFileSource(tempAudioFile.path));
+      // Save the audio data to a temporary file
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/tts_audio.mp3');
+      await tempFile.writeAsBytes(audioData);
+
+      // Play the audio file
+      await _audioPlayer.stop(); // Stop any existing playback
+      await _audioPlayer.play(DeviceFileSource(tempFile.path));
       _isPlaying = true;
 
-      // Calculate word timing
+      // Split text and schedule word callbacks
       final words = text.split(' ');
+
+      // Wait for duration to be available
+      await Future.delayed(Duration(milliseconds: 100));
       final duration =
           await _audioPlayer.getDuration() ?? const Duration(seconds: 1);
       final wordDelay = duration.inMilliseconds ~/ words.length;
@@ -159,13 +169,25 @@ class TTSServiceHandler {
     }
   }
 
-  Future<void> endConversation() async {
-    if (_isPlaying) {
-      await _audioPlayer.stop();
-    }
-    _isPlaying = false;
+  bool get isPlaying => _isPlaying;
 
-    // Clear all pending timers
+  Future<void> pauseSpeech() async {
+    if (_isPlaying) {
+      await _audioPlayer.pause();
+      _isPlaying = false;
+    }
+  }
+
+  Future<void> resumeSpeech() async {
+    if (!_isPlaying) {
+      await _audioPlayer.resume();
+      _isPlaying = true;
+    }
+  }
+
+  Future<void> stopSpeech() async {
+    await _audioPlayer.stop();
+    _isPlaying = false;
     for (var timer in _pendingTimers) {
       timer.cancel();
     }
@@ -199,7 +221,7 @@ class TTSServiceHandler {
   bool get isPlaying => _isPlaying;
 
   void dispose() {
-    endConversation();
+    stopSpeech();
     _audioPlayer.dispose();
     debugPrint('$TAG Disposed');
   }
