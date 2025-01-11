@@ -1,20 +1,16 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_tts/flutter_tts.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:path_provider/path_provider.dart';
-import 'package:csv/csv.dart';
-
-import '../models/user_data.dart';
-import '../services/chatgpt_service_handler.dart';
-import '../services/tts_service_handler.dart';
-import '../services/speech_handler.dart';
-import '../config/env_config.dart';
+import 'package:lets_tallk/models/user_data.dart';
+import 'package:lets_tallk/services/chatgpt_service_handler.dart';
+import 'package:lets_tallk/services/speech_handler.dart';
+import 'package:lets_tallk/services/tts_service_handler.dart';
+import 'package:lets_tallk/widgets/dot_waveform_animator.dart';
+import 'package:lets_tallk/config/env_config.dart';
 
 class ConversationActivity extends StatefulWidget {
   final UserData userData;
 
-  ConversationActivity({required this.userData});
+  const ConversationActivity({Key? key, required this.userData})
+      : super(key: key);
 
   @override
   _ConversationActivityState createState() => _ConversationActivityState();
@@ -22,14 +18,16 @@ class ConversationActivity extends StatefulWidget {
 
 class _ConversationActivityState extends State<ConversationActivity>
     implements TextToSpeechCallback {
-  late ChatGPTServiceHandler _chatGPTServiceHandler;
-  late TTSServiceHandler _ttsServiceHandler;
-  late SpeechHandler _speechHandler;
-
-  bool _isProcessing = false;
-  String _currentWord = '';
-  List<Map<String, String>> _conversationHistory = [];
+  SpeechHandler? _speechHandler;
+  TTSServiceHandler? _ttsServiceHandler;
+  ChatGPTServiceHandler? _chatGPTServiceHandler;
   final TextEditingController _conversationController = TextEditingController();
+  bool _isProcessing = false;
+  bool _isConversationActive = false;
+  bool _isSpeaking = false;
+  bool _hasTalked = false;
+  bool _conversationEnded = false;
+  final List<Map<String, String>> _conversationHistory = [];
 
   @override
   void initState() {
@@ -38,53 +36,179 @@ class _ConversationActivityState extends State<ConversationActivity>
   }
 
   void _initializeHandlers() {
-    _ttsServiceHandler = TTSServiceHandler(apiKey: EnvConfig.openAiApiKey);
-    _ttsServiceHandler.setCallback(this);
-
-    _chatGPTServiceHandler = ChatGPTServiceHandler(
-      apiKey: EnvConfig.openAiApiKey,
-      ttsServiceHandler: _ttsServiceHandler,
-      onResponse: _onAIResponse,
-      onError: _onAIError,
-    );
-
     _speechHandler = SpeechHandler(
       context: context,
       conversationController: _conversationController,
     );
 
-    // Connect speech handler to process results
-    _speechHandler.setOnSpeechResult((String text) {
-      _processSpeechResult(text);
+    _ttsServiceHandler = TTSServiceHandler(
+      apiKey: EnvConfig.openAiApiKey,
+    );
+    _ttsServiceHandler?.setCallback(this);
+
+    _chatGPTServiceHandler = ChatGPTServiceHandler(
+      apiKey: EnvConfig.openAiApiKey,
+      onResponse: _onAIResponse,
+      onError: _onAIError,
+      ttsServiceHandler: _ttsServiceHandler!,
+    );
+
+    _speechHandler?.setOnSpeechResult(_processSpeechResult);
+  }
+
+  void _processSpeechResult(String text) {
+    debugPrint('Processing speech result: $text');
+
+    if (_chatGPTServiceHandler == null || !_isConversationActive) {
+      debugPrint(
+          'Error: ChatGPT handler is null or conversation is not active');
+      return;
+    }
+
+    // Stop listening while processing
+    _speechHandler?.stopListening();
+
+    setState(() {
+      _isProcessing = true;
+      _conversationHistory.add({
+        "role": "user",
+        "content": text,
+      });
+      _conversationController.text += "User: $text\n\n";
+      _hasTalked = true;
     });
 
-    // Listen to speech levels
-    _speechHandler.soundLevelStream.listen((level) {
-      // Handle sound level updates if needed
-    });
+    try {
+      _chatGPTServiceHandler!.generateTextAndConvertToSpeech(
+        text,
+        _conversationHistory,
+      );
+      debugPrint('Request sent to ChatGPT successfully');
+    } catch (e, stackTrace) {
+      debugPrint('Error calling ChatGPT: $e');
+      debugPrint('Stack trace: $stackTrace');
+      setState(() {
+        _isProcessing = false;
+        // Restart listening if there was an error
+        if (_isConversationActive) {
+          _speechHandler?.startListening();
+        }
+      });
+    }
   }
 
   void _onAIResponse(String response) {
+    debugPrint('Received AI response: $response');
+    if (response.isEmpty) {
+      debugPrint('Warning: Empty response received from AI');
+      return;
+    }
+
     setState(() {
-      _conversationHistory.add({"role": "assistant", "content": response});
-      _conversationController.text += "Elif: $response\n\n";
       _isProcessing = false;
+      _conversationHistory.add({
+        "role": "assistant",
+        "content": response,
+      });
+      _conversationController.text += "Elif: $response\n\n";
     });
+
+    // Restart listening after processing the response
+    if (_isConversationActive && mounted) {
+      debugPrint('Restarting listening after AI response');
+      _speechHandler?.startListening();
+    }
   }
 
   void _onAIError(String error) {
+    debugPrint('AI Error: $error');
     setState(() {
       _isProcessing = false;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
-      );
+      _conversationController.text += "Error: $error\n\n";
     });
   }
 
-  // Implement TextToSpeechCallback methods
+  void _startConversation() {
+    if (_conversationEnded) {
+      _showWarningDialog();
+    } else {
+      if (_speechHandler != null && !_isConversationActive) {
+        setState(() {
+          _isConversationActive = true;
+          _isProcessing = false;
+        });
+        _speechHandler?.startListening();
+      }
+    }
+  }
+
+  void _stopConversation() {
+    if (_hasTalked) {
+      _showPurchaseDialog();
+    } else {
+      _speechHandler?.stopListening();
+      setState(() {
+        _isConversationActive = false;
+        _isProcessing = false;
+        _conversationEnded = true;
+      });
+    }
+  }
+
+  void _showWarningDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Warning"),
+          content: Text(
+              "You have already completed a conversation. Please purchase the app to continue."),
+          actions: [
+            TextButton(
+              child: Text("OK"),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showPurchaseDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Purchase Required"),
+          content: Text(
+              "You have reached the limit for free conversations. Please purchase the app to continue."),
+          actions: [
+            TextButton(
+              child: Text("Cancel"),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text("Purchase"),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   void onStart(String text) {
     debugPrint('Started speaking: $text');
+    setState(() {
+      _isSpeaking = true;
+    });
   }
 
   @override
@@ -94,124 +218,58 @@ class _ConversationActivityState extends State<ConversationActivity>
 
   @override
   void onComplete() {
-    debugPrint('Finished speaking');
-    // Start listening again if needed
-    if (!_speechHandler.isListening && mounted) {
-      setState(() {
-        _speechHandler.startListening();
-      });
-    }
-  }
-
-  // Modify the speech handler to process results
-  void _processSpeechResult(String text) {
+    debugPrint('TTS Complete');
     setState(() {
-      _isProcessing = true;
-      _conversationController.text += "User: $text\n\n";
+      _isSpeaking = false;
+      _isProcessing = false;
     });
-
-    _chatGPTServiceHandler.generateTextAndConvertToSpeech(
-      text,
-      _conversationHistory,
-    );
+    // Remove the code that restarts listening since we're keeping it on
+    // No need to call _speechHandler?.startListening() here
   }
 
   @override
   void dispose() {
-    _ttsServiceHandler.dispose();
-    _speechHandler.dispose();
+    _speechHandler?.dispose();
     _conversationController.dispose();
+    _ttsServiceHandler?.dispose();
     super.dispose();
   }
 
-  Future<void> _pauseSpeech() async {
-    await _ttsServiceHandler.pauseSpeech();
-    setState(() {
-      // Update UI if needed
-    });
-  }
-
-  Future<void> _resumeSpeech() async {
-    await _ttsServiceHandler.resumeSpeech();
-    setState(() {
-      // Update UI if needed
-    });
-  }
-
-  Future<void> _stopSpeech() async {
-    await _ttsServiceHandler.stopSpeech();
-    setState(() {
-      // Update UI if needed
-    });
-  }
-
-  // Add speech control buttons to your UI
-  Widget _buildSpeechControls() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        if (_ttsServiceHandler.isPlaying)
-          IconButton(
-            icon: Icon(Icons.pause),
-            onPressed: _pauseSpeech,
-          ),
-        if (!_ttsServiceHandler.isPlaying)
-          IconButton(
-            icon: Icon(Icons.play_arrow),
-            onPressed: _resumeSpeech,
-          ),
-        IconButton(
-          icon: Icon(Icons.stop),
-          onPressed: _stopSpeech,
-        ),
-      ],
-    );
-  }
-  // ... rest of your build method remains the same ...
-
   @override
   Widget build(BuildContext context) {
+    debugPrint(
+        'Building UI - isProcessing: $_isProcessing, isConversationActive: $_isConversationActive, isListening: ${_speechHandler?.isListening}');
+
     return Scaffold(
       appBar: AppBar(
         title: Text("${widget.userData.name} Let's Talk"),
         backgroundColor: Colors.white,
+        actions: [
+          // Add conversation state indicator
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                if (_isProcessing)
+                  Icon(Icons.sync, color: Colors.orange)
+                else if (_speechHandler?.isListening ?? false)
+                  Icon(Icons.mic, color: Colors.green)
+                else if (_ttsServiceHandler?.isPlaying ?? false)
+                  Icon(Icons.volume_up, color: Colors.blue)
+                else
+                  Icon(Icons.mic_off, color: Colors.red),
+                SizedBox(width: 8),
+                Text(_getStatusText()),
+              ],
+            ),
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Focus Areas
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                GestureDetector(
-                  onTap: () => print("Grammar Focus Selected"),
-                  child: Text(
-                    "Grammar",
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.green,
-                      decoration: TextDecoration.underline,
-                    ),
-                  ),
-                ),
-                SizedBox(width: 16),
-                GestureDetector(
-                  onTap: () => print("Pronunciation Focus Selected"),
-                  child: Text(
-                    "Pronunciation",
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 16),
-
-            // Conversation Display
             Expanded(
               child: TextField(
                 controller: _conversationController,
@@ -219,88 +277,68 @@ class _ConversationActivityState extends State<ConversationActivity>
                 readOnly: true,
                 decoration: InputDecoration(
                   border: OutlineInputBorder(),
+                  hintText: 'Conversation will appear here...',
                 ),
               ),
             ),
-
-            // Add current word display if TTS is active
-            if (_currentWord.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
+            SizedBox(height: 20),
+            Center(
+              child: DotWaveformAnimator(
+                isVisible: (_speechHandler?.isListening ?? false) &&
+                    _isConversationActive,
+                soundLevelStream: _speechHandler?.soundLevelStream,
+              ),
+            ),
+            if (_isSpeaking)
+              Center(
                 child: Text(
-                  'Speaking: $_currentWord',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.blue,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  'Speaking...',
+                  style: TextStyle(fontSize: 16, color: Colors.blue),
                 ),
               ),
-
-            // Add speech controls if TTS is active
-            if (_ttsServiceHandler.isPlaying || _currentWord.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: _buildSpeechControls(),
-              ),
-
-            // Sound Level Visualizer
-            SoundLevelVisualizer(
-              soundLevelStream: _speechHandler.soundLevelStream,
-            ),
-
-            // Buttons Row
+            SizedBox(height: 20),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 ElevatedButton(
-                  onPressed: () => print("Language Selection Clicked"),
+                  onPressed: _startConversation,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
+                    backgroundColor: Colors.blue,
+                    padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                   ),
-                  child: Text("Turkish"),
+                  child: Text(
+                    _isConversationActive
+                        ? "Conversation Active"
+                        : "Start Conversation",
+                    style: TextStyle(fontSize: 18),
+                  ),
                 ),
                 ElevatedButton(
-                  onPressed: () => print("Language Selection Clicked"),
+                  onPressed: _stopConversation,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
+                    backgroundColor:
+                        _isConversationActive ? Colors.red : Colors.grey,
+                    padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                   ),
-                  child: Text("Save Conversation"),
+                  child: Text(
+                    "End Conversation",
+                    style: TextStyle(fontSize: 18),
+                  ),
                 ),
               ],
             ),
-            SizedBox(height: 16),
-
-            // Progress Indicator
             if (_isProcessing) Center(child: CircularProgressIndicator()),
-
-            // Start Listening Button
-            Center(
-              child: ElevatedButton(
-                onPressed: (_isProcessing ||
-                        _ttsServiceHandler.isPlaying) // Updated condition
-                    ? null
-                    : () {
-                        setState(() {
-                          _isProcessing = true;
-                          _speechHandler.startListening();
-                        });
-                      },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                ),
-                child: Text(
-                  _speechHandler.isListening
-                      ? "Listening..."
-                      : "Start Listening",
-                  style: TextStyle(fontSize: 18),
-                ),
-              ),
-            ),
           ],
         ),
       ),
     );
+  }
+
+  String _getStatusText() {
+    if (_isProcessing) return 'Processing...';
+    if (_speechHandler?.isListening ?? false) return 'Listening';
+    if (_ttsServiceHandler?.isPlaying ?? false) return 'Speaking';
+    if (_isConversationActive) return 'Ready';
+    return 'Inactive';
   }
 }
