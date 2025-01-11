@@ -28,6 +28,9 @@ class _ConversationActivityState extends State<ConversationActivity>
   bool _hasTalked = false;
   bool _conversationEnded = false;
   final List<Map<String, String>> _conversationHistory = [];
+  String _recognizedText = '';
+  bool _isListening = false;
+  String _aiResponse = '';
 
   @override
   void initState() {
@@ -56,45 +59,21 @@ class _ConversationActivityState extends State<ConversationActivity>
     _speechHandler?.setOnSpeechResult(_processSpeechResult);
   }
 
-  void _processSpeechResult(String text) {
-    debugPrint('Processing speech result: $text');
-
-    if (_chatGPTServiceHandler == null || !_isConversationActive) {
-      debugPrint(
-          'Error: ChatGPT handler is null or conversation is not active');
-      return;
-    }
-
-    // Stop listening while processing
-    _speechHandler?.stopListening();
+  void _processSpeechResult(String recognizedText) {
+    if (!mounted) return;
 
     setState(() {
+      _recognizedText = recognizedText;
       _isProcessing = true;
-      _conversationHistory.add({
-        "role": "user",
-        "content": text,
-      });
-      _conversationController.text += "User: $text\n\n";
-      _hasTalked = true;
+      _conversationController.text += "You: $recognizedText\n\n";
+      _conversationHistory.add({"role": "user", "content": recognizedText});
     });
 
-    try {
-      _chatGPTServiceHandler!.generateTextAndConvertToSpeech(
-        text,
-        _conversationHistory,
-      );
-      debugPrint('Request sent to ChatGPT successfully');
-    } catch (e, stackTrace) {
-      debugPrint('Error calling ChatGPT: $e');
-      debugPrint('Stack trace: $stackTrace');
-      setState(() {
-        _isProcessing = false;
-        // Restart listening if there was an error
-        if (_isConversationActive) {
-          _speechHandler?.startListening();
-        }
-      });
-    }
+    // Send to ChatGPT and get response
+    _chatGPTServiceHandler?.generateTextAndConvertToSpeech(
+      recognizedText,
+      _conversationHistory,
+    );
   }
 
   void _onAIResponse(String response) {
@@ -116,7 +95,12 @@ class _ConversationActivityState extends State<ConversationActivity>
     // Restart listening after processing the response
     if (_isConversationActive && mounted) {
       debugPrint('Restarting listening after AI response');
-      _speechHandler?.startListening();
+      _speechHandler?.startListening((String recognizedText) {
+        setState(() {
+          _recognizedText = recognizedText; // Update recognized text
+        });
+        print(recognizedText); // Print recognized text
+      });
     }
   }
 
@@ -131,15 +115,17 @@ class _ConversationActivityState extends State<ConversationActivity>
   void _startConversation() {
     if (_conversationEnded) {
       _showWarningDialog();
-    } else {
-      if (_speechHandler != null && !_isConversationActive) {
-        setState(() {
-          _isConversationActive = true;
-          _isProcessing = false;
-        });
-        _speechHandler?.startListening();
-      }
+      return;
     }
+
+    setState(() {
+      _isConversationActive = true;
+      _isListening = true;
+    });
+
+    _speechHandler?.startListening((String text) {
+      _processSpeechResult(text);
+    });
   }
 
   void _stopConversation() {
@@ -159,18 +145,46 @@ class _ConversationActivityState extends State<ConversationActivity>
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Warning"),
-          content: Text(
-              "You have already completed a conversation. Please purchase the app to continue."),
-          actions: [
-            TextButton(
-              child: Text("OK"),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+        return Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.9,
+              maxHeight: MediaQuery.of(context).size.height * 0.8,
             ),
-          ],
+            child: AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+              title: Text(
+                "Warning",
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              content: SingleChildScrollView(
+                child: Container(
+                  width: double.maxFinite,
+                  child: Text(
+                    "You have already completed a conversation. Please purchase the app to continue.",
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ),
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: Size(88, 36),
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                    child: Text("OK"),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
@@ -235,6 +249,25 @@ class _ConversationActivityState extends State<ConversationActivity>
     super.dispose();
   }
 
+  void _startListening() {
+    _speechHandler?.startListening((String recognizedText) {
+      setState(() {
+        _recognizedText = recognizedText; // This will update in real-time
+      });
+    });
+    setState(() {
+      _isListening = true;
+    });
+  }
+
+  void _stopListening() {
+    _speechHandler?.stopListening();
+    setState(() {
+      // Update UI to reflect that listening has stopped
+      _isListening = false; // Now this variable is defined
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     debugPrint(
@@ -289,11 +322,20 @@ class _ConversationActivityState extends State<ConversationActivity>
                 soundLevelStream: _speechHandler?.soundLevelStream,
               ),
             ),
-            if (_isSpeaking)
-              Center(
-                child: Text(
-                  'Speaking...',
-                  style: TextStyle(fontSize: 16, color: Colors.blue),
+            if (_isListening && _recognizedText.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _recognizedText,
+                    style: TextStyle(fontSize: 16),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
             SizedBox(height: 20),

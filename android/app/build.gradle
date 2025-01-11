@@ -21,7 +21,7 @@ android {
 
 defaultConfig {
         applicationId "com.example.lets_tallk"
-        minSdkVersion 19
+        minSdkVersion 21
         targetSdkVersion 33
         multiDexEnabled true
     }

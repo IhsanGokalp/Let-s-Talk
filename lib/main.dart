@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'routes.dart';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 
 void main() async {
   // Add this line to initialize Flutter bindings

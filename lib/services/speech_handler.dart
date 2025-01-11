@@ -57,37 +57,29 @@ class SpeechHandler {
     }
   }
 
-  Future<void> startListening() async {
+  Future<void> startListening(Function(String) onResult) async {
     if (!_isListening) {
-      try {
+      bool available = await _speechToText.initialize();
+      if (available) {
         _isListening = true;
 
-        await _speechToText.listen(
+        _speechToText.listen(
           onResult: (result) {
             if (result.finalResult) {
-              String recognizedText = result.recognizedWords;
-              if (recognizedText.isNotEmpty) {
-                _processSpeech(recognizedText);
-              }
+              onResult(result.recognizedWords);
             }
           },
-          listenFor: Duration(seconds: 30),
+          listenFor: Duration(seconds: 30), // Adjust duration as needed
           localeId: 'en_US',
           cancelOnError: true,
           partialResults: true,
-          onSoundLevelChange: (level) {
-            if (level > RMS_THRESHOLD) {
-              _soundLevelController.add(level);
-            }
-          },
         );
 
-        _startSpeechTimeout();
-      } catch (e) {
-        _handleError('Error starting speech recognition: $e');
+        // Update UI to show that listening has started
+        debugPrint('Speech recognition status: listening');
+      } else {
+        _showToast('Speech recognition is not available on this device.');
       }
-    } else {
-      _showToast('Already listening');
     }
   }
 
@@ -228,7 +220,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
             soundLevelStream: _speechHandler.soundLevelStream,
           ),
           ElevatedButton(
-            onPressed: _speechHandler.startListening,
+            onPressed: () {
+              _speechHandler.startListening((String recognizedText) {
+                // Handle the recognized text here
+                print(recognizedText); // Print recognized text
+              });
+            },
             child: Text('Start Listening'),
           ),
         ],
