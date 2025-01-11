@@ -20,6 +20,12 @@ class TTSServiceHandler {
     _initTTS();
   }
 
+  Function(String)? _wordSpokenListener;
+
+  void setOnWordSpokenListener(Function(String) listener) {
+    _wordSpokenListener = listener;
+  }
+
   void _initTTS() {
     _flutterTts.setStartHandler(() {
       debugPrint('$tag Started speaking');
@@ -30,6 +36,7 @@ class TTSServiceHandler {
         .setProgressHandler((String text, int start, int end, String word) {
       debugPrint('$tag Speaking word: $word');
       _callback?.onProgress(word);
+      _wordSpokenListener?.call(word); // Add this line
     });
 
     _flutterTts.setCompletionHandler(() {

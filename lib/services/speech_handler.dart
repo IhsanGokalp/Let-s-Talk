@@ -57,6 +57,20 @@ class SpeechHandler {
     }
   }
 
+  Future<bool> initializeAndCheck() async {
+    try {
+      bool available = await _speechToText.initialize(
+        onError: (error) => _handleError(error.errorMsg),
+        onStatus: (status) => _handleStatus(status),
+      );
+      debugPrint('Speech recognition available: $available');
+      return available;
+    } catch (e) {
+      debugPrint('Speech initialization error: $e');
+      return false;
+    }
+  }
+
   Future<void> startListening(Function(String) onResult) async {
     if (!_isListening) {
       bool available = await _speechToText.initialize();

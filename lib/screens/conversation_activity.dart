@@ -32,10 +32,17 @@ class _ConversationActivityState extends State<ConversationActivity>
   bool _isListening = false;
   String _aiResponse = '';
 
+  String _currentWord = '';
+
   @override
   void initState() {
     super.initState();
     _initializeHandlers();
+
+    // Add speech initialization status check
+    _speechHandler?.initializeAndCheck().then((_) {
+      setState(() {}); // Trigger rebuild after initialization
+    });
   }
 
   void _initializeHandlers() {
@@ -69,7 +76,6 @@ class _ConversationActivityState extends State<ConversationActivity>
       _conversationHistory.add({"role": "user", "content": recognizedText});
     });
 
-    // Send to ChatGPT and get response
     _chatGPTServiceHandler?.generateTextAndConvertToSpeech(
       recognizedText,
       _conversationHistory,
@@ -123,9 +129,15 @@ class _ConversationActivityState extends State<ConversationActivity>
       _isListening = true;
     });
 
+    // Start listening with explicit callback
     _speechHandler?.startListening((String text) {
-      _processSpeechResult(text);
+      setState(() {
+        _recognizedText = text;
+        _processSpeechResult(text);
+      });
     });
+
+    debugPrint('Started listening: ${_speechHandler?.isListening}');
   }
 
   void _stopConversation() {
@@ -227,7 +239,9 @@ class _ConversationActivityState extends State<ConversationActivity>
 
   @override
   void onProgress(String word) {
-    debugPrint('Speaking word: $word');
+    setState(() {
+      _currentWord = word;
+    });
   }
 
   @override
@@ -303,17 +317,25 @@ class _ConversationActivityState extends State<ConversationActivity>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: TextField(
-                controller: _conversationController,
-                maxLines: null,
-                readOnly: true,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'Conversation will appear here...',
+            if (_ttsServiceHandler?.isPlaying ?? false)
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _currentWord,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
+                  ),
                 ),
               ),
-            ),
             SizedBox(height: 20),
             Center(
               child: DotWaveformAnimator(
