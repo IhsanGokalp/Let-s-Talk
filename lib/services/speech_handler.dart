@@ -71,7 +71,7 @@ class SpeechHandler {
     }
   }
 
-  Future<void> startListening(Function(String) onResult) async {
+  void startListening(Function(String) onResult) async {
     if (!_isListening) {
       bool available = await _speechToText.initialize();
       if (available) {
@@ -79,20 +79,17 @@ class SpeechHandler {
 
         _speechToText.listen(
           onResult: (result) {
+            // Handle partial results
+            onResult(result.recognizedWords);
             if (result.finalResult) {
-              onResult(result.recognizedWords);
+              _processSpeech(result.recognizedWords);
             }
           },
-          listenFor: Duration(seconds: 30), // Adjust duration as needed
+          listenFor: Duration(seconds: 30),
           localeId: 'en_US',
           cancelOnError: true,
-          partialResults: true,
+          partialResults: true, // Enable partial results
         );
-
-        // Update UI to show that listening has started
-        debugPrint('Speech recognition status: listening');
-      } else {
-        _showToast('Speech recognition is not available on this device.');
       }
     }
   }

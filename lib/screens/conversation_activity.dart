@@ -16,6 +16,28 @@ class ConversationActivity extends StatefulWidget {
   _ConversationActivityState createState() => _ConversationActivityState();
 }
 
+class ChatMessage {
+  String text; // Remove final
+  final bool isUser;
+  final DateTime timestamp;
+  String displayedText;
+  bool isFinal;
+
+  ChatMessage({
+    required String initialText,
+    required this.isUser,
+    this.isFinal = false,
+    DateTime? timestamp,
+  })  : text = initialText,
+        displayedText = initialText,
+        timestamp = timestamp ?? DateTime.now();
+
+  void updateText(String newText) {
+    text = newText;
+    displayedText = newText;
+  }
+}
+
 class _ConversationActivityState extends State<ConversationActivity>
     implements TextToSpeechCallback {
   SpeechHandler? _speechHandler;
@@ -33,6 +55,9 @@ class _ConversationActivityState extends State<ConversationActivity>
   String _aiResponse = '';
 
   String _currentWord = '';
+
+  final List<ChatMessage> _messages = [];
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -63,51 +88,76 @@ class _ConversationActivityState extends State<ConversationActivity>
       ttsServiceHandler: _ttsServiceHandler!,
     );
 
-    _speechHandler?.setOnSpeechResult(_processSpeechResult);
+    _speechHandler?.setOnSpeechResult((recognizedText) {
+      _processSpeechResult(recognizedText, true);
+    });
   }
 
-  void _processSpeechResult(String recognizedText) {
+  void _processSpeechResult(String recognizedText, bool isFinal) {
     if (!mounted) return;
 
     setState(() {
-      _recognizedText = recognizedText;
-      _isProcessing = true;
-      _conversationController.text += "You: $recognizedText\n\n";
-      _conversationHistory.add({"role": "user", "content": recognizedText});
+      if (_messages.isEmpty ||
+          _messages.last.isUser && _messages.last.isFinal) {
+        _messages.add(ChatMessage(
+          initialText: recognizedText,
+          isUser: true,
+          isFinal: isFinal,
+        ));
+      } else if (_messages.last.isUser) {
+        _messages.last.updateText(recognizedText);
+        _messages.last.isFinal = isFinal;
+      }
     });
 
-    _chatGPTServiceHandler?.generateTextAndConvertToSpeech(
-      recognizedText,
+    if (isFinal) {
+      _sendToChatGPT(recognizedText);
+    }
+
+    _scrollToBottom();
+  }
+
+  void _sendToChatGPT(String userInput) {
+    setState(() {
+      _isProcessing = true;
+    });
+
+    _conversationHistory.add({"role": "user", "content": userInput});
+
+    _chatGPTServiceHandler
+        ?.generateTextAndConvertToSpeech(
+      userInput,
       _conversationHistory,
-    );
+    )
+        .then((_) {
+      setState(() {
+        _isProcessing = false;
+      });
+    }).catchError((error) {
+      debugPrint('Error sending to ChatGPT: $error');
+      _onAIError(error.toString());
+    });
   }
 
   void _onAIResponse(String response) {
-    debugPrint('Received AI response: $response');
-    if (response.isEmpty) {
-      debugPrint('Warning: Empty response received from AI');
-      return;
-    }
+    if (response.isEmpty) return;
 
     setState(() {
-      _isProcessing = false;
-      _conversationHistory.add({
-        "role": "assistant",
-        "content": response,
-      });
-      _conversationController.text += "Elif: $response\n\n";
+      _messages.add(ChatMessage(
+        initialText: response,
+        isUser: false,
+      ));
     });
+  }
 
-    // Restart listening after processing the response
-    if (_isConversationActive && mounted) {
-      debugPrint('Restarting listening after AI response');
-      _speechHandler?.startListening((String recognizedText) {
-        setState(() {
-          _recognizedText = recognizedText; // Update recognized text
-        });
-        print(recognizedText); // Print recognized text
-      });
-    }
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   void _onAIError(String error) {
@@ -133,7 +183,7 @@ class _ConversationActivityState extends State<ConversationActivity>
     _speechHandler?.startListening((String text) {
       setState(() {
         _recognizedText = text;
-        _processSpeechResult(text);
+        _processSpeechResult(text, true);
       });
     });
 
@@ -239,9 +289,12 @@ class _ConversationActivityState extends State<ConversationActivity>
 
   @override
   void onProgress(String word) {
-    setState(() {
-      _currentWord = word;
-    });
+    if (_messages.isNotEmpty && !_messages.last.isUser) {
+      setState(() {
+        final lastMessage = _messages.last;
+        lastMessage.displayedText += ' $word';
+      });
+    }
   }
 
   @override
@@ -282,6 +335,42 @@ class _ConversationActivityState extends State<ConversationActivity>
     });
   }
 
+  void _onFinalSpeechResult(String recognizedText) {
+    if (!mounted) return;
+
+    setState(() {
+      if (_messages.isNotEmpty && _messages.last.isUser) {
+        _messages.last.isFinal = true;
+        _messages.last.text = recognizedText;
+        _messages.last.displayedText = recognizedText;
+      }
+      _isProcessing = true;
+    });
+
+    _chatGPTServiceHandler?.generateTextAndConvertToSpeech(
+      recognizedText,
+      _conversationHistory,
+    );
+  }
+
+  Widget _buildMessageBubble(ChatMessage message) {
+    return Align(
+      alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        padding: EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+        decoration: BoxDecoration(
+          color: message.isUser ? Colors.blue[100] : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          message.isUser ? message.displayedText : message.displayedText,
+          style: TextStyle(fontSize: 16),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     debugPrint(
@@ -317,6 +406,14 @@ class _ConversationActivityState extends State<ConversationActivity>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                itemCount: _messages.length,
+                itemBuilder: (context, index) =>
+                    _buildMessageBubble(_messages[index]),
+              ),
+            ),
             if (_ttsServiceHandler?.isPlaying ?? false)
               Padding(
                 padding: const EdgeInsets.all(8.0),
@@ -404,5 +501,34 @@ class _ConversationActivityState extends State<ConversationActivity>
     if (_ttsServiceHandler?.isPlaying ?? false) return 'Speaking';
     if (_isConversationActive) return 'Ready';
     return 'Inactive';
+  }
+}
+
+class MessageBubble extends StatelessWidget {
+  final String text;
+  final bool isUser;
+
+  const MessageBubble({
+    required this.text,
+    required this.isUser,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        padding: EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+        decoration: BoxDecoration(
+          color: isUser ? Colors.blue[100] : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(fontSize: 16),
+        ),
+      ),
+    );
   }
 }
