@@ -318,29 +318,6 @@ class _ConversationActivityState extends State<ConversationActivity>
     super.dispose();
   }
 
-  void _startListening() {
-    _speechHandler?.startListening((String recognizedText) {
-      setState(() {
-        _recognizedText = recognizedText;
-        if (_messages.isEmpty ||
-            _messages.last.isUser && _messages.last.isFinal) {
-          _messages.add(ChatMessage(
-            initialText: recognizedText,
-            isUser: true,
-            isFinal: false,
-          ));
-        } else if (_messages.last.isUser) {
-          _messages.last.updateText(recognizedText);
-        }
-        _scrollToBottom();
-      });
-    });
-
-    setState(() {
-      _isListening = true;
-    });
-  }
-
   void _processSpeechResult(String recognizedText, bool isFinal) {
     if (!mounted) return;
 
