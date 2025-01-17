@@ -5,6 +5,7 @@ import 'package:lets_tallk/services/speech_handler.dart';
 import 'package:lets_tallk/services/tts_service_handler.dart';
 import 'package:lets_tallk/widgets/dot_waveform_animator.dart';
 import 'package:lets_tallk/config/env_config.dart';
+import 'dart:async'; // Add this import at the top
 
 class ConversationActivity extends StatefulWidget {
   final UserData userData;
@@ -17,20 +18,21 @@ class ConversationActivity extends StatefulWidget {
 }
 
 class ChatMessage {
-  String text; // Remove final
+  String text;
   final bool isUser;
-  final DateTime timestamp;
   String displayedText;
   bool isFinal;
+  bool isComplete;
 
   ChatMessage({
     required String initialText,
     required this.isUser,
     this.isFinal = false,
-    DateTime? timestamp,
+    this.isComplete = false,
   })  : text = initialText,
-        displayedText = initialText,
-        timestamp = timestamp ?? DateTime.now();
+        displayedText = isUser
+            ? initialText
+            : ''; // Initialize empty for assistant messages
 
   void updateText(String newText) {
     text = newText;
@@ -58,6 +60,81 @@ class _ConversationActivityState extends State<ConversationActivity>
 
   final List<ChatMessage> _messages = [];
   final ScrollController _scrollController = ScrollController();
+
+  Timer? _speechTimeout;
+  static const int SPEECH_COMPLETION_DELAY = 1500; // 1.5 seconds
+
+  void _finalizeAndSendSpeech(String recognizedText) {
+    setState(() {
+      if (_messages.isNotEmpty && _messages.last.isUser) {
+        _messages.last.isFinal = true;
+        _messages.last.isComplete = true;
+      }
+      _isListening = false;
+    });
+
+    _sendToChatGPT(recognizedText);
+  }
+
+  @override
+  void onProgress(String word) {
+    if (!mounted) return;
+    if (_messages.isNotEmpty && !_messages.last.isUser) {
+      setState(() {
+        _messages.last.displayedText += ' $word';
+      });
+      _scrollToBottom();
+    }
+  }
+
+  @override
+  void onStart(String text) {
+    debugPrint('Started speaking: $text');
+    setState(() {
+      _isSpeaking = true;
+    });
+  }
+
+  @override
+  void onComplete() {
+    debugPrint('TTS Complete');
+    setState(() {
+      if (_messages.isNotEmpty && !_messages.last.isUser) {
+        _messages.last.displayedText = _messages.last.text;
+        _messages.last.isComplete = true;
+      }
+      _isSpeaking = false;
+      _isProcessing = false;
+      // Don't end conversation here
+      _isConversationActive = true; // Keep conversation active
+      _startListening(); // Auto-start listening for next input
+    });
+  }
+
+  void _startConversation() {
+    setState(() {
+      _isConversationActive = true;
+      _isListening = true;
+      _conversationEnded = false; // Reset conversation end state
+    });
+
+    _startListening();
+  }
+
+  void _startListening() {
+    if (!_isConversationActive) return;
+
+    _speechHandler?.startListening((String text) {
+      setState(() {
+        _recognizedText = text;
+        _processSpeechResult(text, false);
+      });
+    });
+
+    setState(() {
+      _isListening = true;
+    });
+  }
 
   @override
   void initState() {
@@ -91,30 +168,6 @@ class _ConversationActivityState extends State<ConversationActivity>
     _speechHandler?.setOnSpeechResult((recognizedText) {
       _processSpeechResult(recognizedText, true);
     });
-  }
-
-  void _processSpeechResult(String recognizedText, bool isFinal) {
-    if (!mounted) return;
-
-    setState(() {
-      if (_messages.isEmpty ||
-          _messages.last.isUser && _messages.last.isFinal) {
-        _messages.add(ChatMessage(
-          initialText: recognizedText,
-          isUser: true,
-          isFinal: isFinal,
-        ));
-      } else if (_messages.last.isUser) {
-        _messages.last.updateText(recognizedText);
-        _messages.last.isFinal = isFinal;
-      }
-    });
-
-    if (isFinal) {
-      _sendToChatGPT(recognizedText);
-    }
-
-    _scrollToBottom();
   }
 
   void _sendToChatGPT(String userInput) {
@@ -166,28 +219,6 @@ class _ConversationActivityState extends State<ConversationActivity>
       _isProcessing = false;
       _conversationController.text += "Error: $error\n\n";
     });
-  }
-
-  void _startConversation() {
-    if (_conversationEnded) {
-      _showWarningDialog();
-      return;
-    }
-
-    setState(() {
-      _isConversationActive = true;
-      _isListening = true;
-    });
-
-    // Start listening with explicit callback
-    _speechHandler?.startListening((String text) {
-      setState(() {
-        _recognizedText = text;
-        _processSpeechResult(text, true);
-      });
-    });
-
-    debugPrint('Started listening: ${_speechHandler?.isListening}');
   }
 
   void _stopConversation() {
@@ -280,35 +311,6 @@ class _ConversationActivityState extends State<ConversationActivity>
   }
 
   @override
-  void onStart(String text) {
-    debugPrint('Started speaking: $text');
-    setState(() {
-      _isSpeaking = true;
-    });
-  }
-
-  @override
-  void onProgress(String word) {
-    if (_messages.isNotEmpty && !_messages.last.isUser) {
-      setState(() {
-        final lastMessage = _messages.last;
-        lastMessage.displayedText += ' $word';
-      });
-    }
-  }
-
-  @override
-  void onComplete() {
-    debugPrint('TTS Complete');
-    setState(() {
-      _isSpeaking = false;
-      _isProcessing = false;
-    });
-    // Remove the code that restarts listening since we're keeping it on
-    // No need to call _speechHandler?.startListening() here
-  }
-
-  @override
   void dispose() {
     _speechHandler?.dispose();
     _conversationController.dispose();
@@ -319,12 +321,51 @@ class _ConversationActivityState extends State<ConversationActivity>
   void _startListening() {
     _speechHandler?.startListening((String recognizedText) {
       setState(() {
-        _recognizedText = recognizedText; // This will update in real-time
+        _recognizedText = recognizedText;
+        if (_messages.isEmpty ||
+            _messages.last.isUser && _messages.last.isFinal) {
+          _messages.add(ChatMessage(
+            initialText: recognizedText,
+            isUser: true,
+            isFinal: false,
+          ));
+        } else if (_messages.last.isUser) {
+          _messages.last.updateText(recognizedText);
+        }
+        _scrollToBottom();
       });
     });
+
     setState(() {
       _isListening = true;
     });
+  }
+
+  void _processSpeechResult(String recognizedText, bool isFinal) {
+    if (!mounted) return;
+
+    _speechTimeout?.cancel();
+    _speechTimeout = Timer(Duration(milliseconds: SPEECH_COMPLETION_DELAY), () {
+      if (mounted && _isListening) {
+        _finalizeAndSendSpeech(recognizedText);
+      }
+    });
+
+    setState(() {
+      _recognizedText = recognizedText;
+      if (_messages.isEmpty ||
+          (_messages.last.isUser && _messages.last.isFinal)) {
+        _messages.add(ChatMessage(
+          initialText: recognizedText,
+          isUser: true,
+          isFinal: false,
+        ));
+      } else if (_messages.last.isUser) {
+        _messages.last.updateText(recognizedText);
+      }
+    });
+
+    _scrollToBottom();
   }
 
   void _stopListening() {
@@ -364,7 +405,7 @@ class _ConversationActivityState extends State<ConversationActivity>
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
-          message.isUser ? message.displayedText : message.displayedText,
+          message.displayedText, // Make sure to use displayedText here
           style: TextStyle(fontSize: 16),
         ),
       ),

@@ -8,7 +8,8 @@ class UserData {
     'Bengali',
     'Portuguese',
     'Russian',
-    'Japanese'
+    'Japanese',
+    'English',
   ];
 
   static final List<String> ageRanges = [
