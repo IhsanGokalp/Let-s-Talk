@@ -29,10 +29,12 @@ class ChatMessage {
     required this.isUser,
     this.isFinal = false,
     this.isComplete = false,
+    String? displayedText,
   })  : text = initialText,
-        displayedText = isUser
-            ? initialText
-            : ''; // Initialize empty for assistant messages
+        displayedText = displayedText ??
+            (isUser
+                ? initialText
+                : ''); // Initialize empty for assistant messages
 
   void updateText(String newText) {
     text = newText;
@@ -81,7 +83,7 @@ class _ConversationActivityState extends State<ConversationActivity>
     if (!mounted) return;
     if (_messages.isNotEmpty && !_messages.last.isUser) {
       setState(() {
-        _messages.last.displayedText = word; // Show current word only
+        _messages.last.displayedText = word; // Show only current word
       });
       _scrollToBottom();
     }
@@ -213,22 +215,25 @@ class _ConversationActivityState extends State<ConversationActivity>
 
   void _onAIResponse(String response) {
     if (response.isEmpty) return;
-
     setState(() {
       _messages.add(ChatMessage(
         initialText: response,
         isUser: false,
+        displayedText: '', // Start empty for AI messages
       ));
     });
+    _scrollToBottom();
   }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 
@@ -340,16 +345,9 @@ class _ConversationActivityState extends State<ConversationActivity>
   void _processSpeechResult(String recognizedText, bool isFinal) {
     if (!mounted) return;
 
-    _speechTimeout?.cancel();
-    _speechTimeout = Timer(Duration(milliseconds: SPEECH_COMPLETION_DELAY), () {
-      if (mounted && _isListening) {
-        _finalizeAndSendSpeech(recognizedText);
-      }
-    });
-
     setState(() {
       if (_messages.isEmpty ||
-          (_messages.last.isUser && _messages.last.isFinal)) {
+          _messages.last.isUser && _messages.last.isFinal) {
         _messages.add(ChatMessage(
           initialText: recognizedText,
           isUser: true,
@@ -359,6 +357,7 @@ class _ConversationActivityState extends State<ConversationActivity>
         _messages.last.updateText(recognizedText);
       }
     });
+    _scrollToBottom();
   }
 
   void _onFinalSpeechResult(String recognizedText) {
@@ -440,49 +439,62 @@ class _ConversationActivityState extends State<ConversationActivity>
                     _buildMessageBubble(_messages[index]),
               ),
             ),
-            if (_ttsServiceHandler?.isPlaying ?? false)
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Container(
-                  padding: EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _currentWord,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
+            Column(
+              children: [
+                // Assistant's message
+                if (_ttsServiceHandler?.isPlaying ?? false)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      padding:
+                          EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.green[100],
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _currentWord,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.black87,
+                        ),
+                      ),
                     ),
                   ),
+
+                // User's message
+                if (_isListening && _recognizedText.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      padding:
+                          EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[100],
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _recognizedText,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                SizedBox(height: 20),
+
+                // Other UI components
+                Center(
+                  child: DotWaveformAnimator(
+                    isVisible: (_speechHandler?.isListening ?? false),
+                  ),
                 ),
-              ),
-            SizedBox(height: 20),
-            Center(
-              child: DotWaveformAnimator(
-                isVisible: (_speechHandler?.isListening ?? false) &&
-                    _isConversationActive,
-                soundLevelStream: _speechHandler?.soundLevelStream,
-              ),
+              ],
             ),
-            if (_isListening && _recognizedText.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Container(
-                  padding: EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _recognizedText,
-                    style: TextStyle(fontSize: 16),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
             SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
