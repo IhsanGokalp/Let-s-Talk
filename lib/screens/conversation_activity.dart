@@ -81,7 +81,7 @@ class _ConversationActivityState extends State<ConversationActivity>
     if (!mounted) return;
     if (_messages.isNotEmpty && !_messages.last.isUser) {
       setState(() {
-        _messages.last.displayedText += ' $word';
+        _messages.last.displayedText = word; // Show current word only
       });
       _scrollToBottom();
     }
@@ -92,6 +92,14 @@ class _ConversationActivityState extends State<ConversationActivity>
     debugPrint('Started speaking: $text');
     setState(() {
       _isSpeaking = true;
+      _stopListening(); // Stop listening when TTS starts
+    });
+  }
+
+  void _stopListening() {
+    _speechHandler?.stopListening();
+    setState(() {
+      _isListening = false;
     });
   }
 
@@ -105,20 +113,31 @@ class _ConversationActivityState extends State<ConversationActivity>
       }
       _isSpeaking = false;
       _isProcessing = false;
-      // Don't end conversation here
-      _isConversationActive = true; // Keep conversation active
-      _startListening(); // Auto-start listening for next input
+      _isConversationActive = true;
+      if (!_conversationEnded) {
+        _startListening(); // Only start listening if conversation is not ended
+      }
     });
   }
 
   void _startConversation() {
     setState(() {
       _isConversationActive = true;
-      _isListening = true;
-      _conversationEnded = false; // Reset conversation end state
+      _isListening = false; // Don't start listening immediately
+      _conversationEnded = false;
     });
 
-    _startListening();
+    // Send welcome message to ChatGPT first
+    _sendInitialPrompt();
+  }
+
+  void _sendInitialPrompt() {
+    final initialPrompt =
+        "Hello, I'm ${widget.userData.name}'s AI language learning assistant. Let's have a conversation.";
+    _chatGPTServiceHandler?.generateTextAndConvertToSpeech(
+      initialPrompt,
+      _conversationHistory,
+    );
   }
 
   void _startListening() {
@@ -329,7 +348,6 @@ class _ConversationActivityState extends State<ConversationActivity>
     });
 
     setState(() {
-      _recognizedText = recognizedText;
       if (_messages.isEmpty ||
           (_messages.last.isUser && _messages.last.isFinal)) {
         _messages.add(ChatMessage(
@@ -340,16 +358,6 @@ class _ConversationActivityState extends State<ConversationActivity>
       } else if (_messages.last.isUser) {
         _messages.last.updateText(recognizedText);
       }
-    });
-
-    _scrollToBottom();
-  }
-
-  void _stopListening() {
-    _speechHandler?.stopListening();
-    setState(() {
-      // Update UI to reflect that listening has stopped
-      _isListening = false; // Now this variable is defined
     });
   }
 
@@ -382,7 +390,7 @@ class _ConversationActivityState extends State<ConversationActivity>
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
-          message.displayedText, // Make sure to use displayedText here
+          message.displayedText,
           style: TextStyle(fontSize: 16),
         ),
       ),
