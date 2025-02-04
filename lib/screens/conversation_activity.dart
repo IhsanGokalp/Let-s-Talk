@@ -66,6 +66,11 @@ class _ConversationActivityState extends State<ConversationActivity>
   Timer? _speechTimeout;
   static const int SPEECH_COMPLETION_DELAY = 1500; // 1.5 seconds
 
+  static const int PAUSE_THRESHOLD = 2000; // 2 seconds for end of speech
+  static const int SHORT_PAUSE = 500; // 0.5 seconds for normal pauses
+  Timer? _pauseTimer;
+  bool _isInitializing = true;
+
   void _finalizeAndSendSpeech(String recognizedText) {
     setState(() {
       if (_messages.isNotEmpty && _messages.last.isUser) {
@@ -109,33 +114,29 @@ class _ConversationActivityState extends State<ConversationActivity>
   void onComplete() {
     debugPrint('TTS Complete');
     setState(() {
-      if (_messages.isNotEmpty && !_messages.last.isUser) {
-        _messages.last.displayedText = _messages.last.text;
-        _messages.last.isComplete = true;
+      if (_isInitializing) {
+        _isInitializing = false;
       }
       _isSpeaking = false;
       _isProcessing = false;
-      _isConversationActive = true;
-      if (!_conversationEnded) {
-        _startListening(); // Only start listening if conversation is not ended
-      }
+      _startListening();
     });
   }
 
   void _startConversation() {
     setState(() {
       _isConversationActive = true;
-      _isListening = false; // Don't start listening immediately
+      _isInitializing = true;
       _conversationEnded = false;
     });
 
-    // Send welcome message to ChatGPT first
+    // Send initial prompt to ChatGPT
     _sendInitialPrompt();
   }
 
   void _sendInitialPrompt() {
     final initialPrompt =
-        "Hello, I'm ${widget.userData.name}'s AI language learning assistant. Let's have a conversation.";
+        "Hello, I'm ${widget.userData.selectedBuddy}. Let's talk about ${widget.userData.selectedTopics}.";
     _chatGPTServiceHandler?.generateTextAndConvertToSpeech(
       initialPrompt,
       _conversationHistory,
@@ -345,9 +346,17 @@ class _ConversationActivityState extends State<ConversationActivity>
   void _processSpeechResult(String recognizedText, bool isFinal) {
     if (!mounted) return;
 
+    // Reset pause detection
+    _pauseTimer?.cancel();
+    _pauseTimer = Timer(Duration(milliseconds: PAUSE_THRESHOLD), () {
+      if (mounted && _isListening) {
+        _finalizeAndSendSpeech(recognizedText);
+      }
+    });
+
     setState(() {
       if (_messages.isEmpty ||
-          _messages.last.isUser && _messages.last.isFinal) {
+          (_messages.last.isUser && _messages.last.isFinal)) {
         _messages.add(ChatMessage(
           initialText: recognizedText,
           isUser: true,
@@ -357,7 +366,6 @@ class _ConversationActivityState extends State<ConversationActivity>
         _messages.last.updateText(recognizedText);
       }
     });
-    _scrollToBottom();
   }
 
   void _onFinalSpeechResult(String recognizedText) {
