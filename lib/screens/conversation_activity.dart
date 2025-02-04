@@ -88,7 +88,7 @@ class _ConversationActivityState extends State<ConversationActivity>
     if (!mounted) return;
     if (_messages.isNotEmpty && !_messages.last.isUser) {
       setState(() {
-        _messages.last.displayedText = word; // Show only current word
+        _messages.last.displayedText = word;
       });
       _scrollToBottom();
     }
@@ -220,22 +220,20 @@ class _ConversationActivityState extends State<ConversationActivity>
       _messages.add(ChatMessage(
         initialText: response,
         isUser: false,
-        displayedText: '', // Start empty for AI messages
+        displayedText: '', // Start empty, will be filled word by word
       ));
     });
     _scrollToBottom();
   }
 
   void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   void _onAIError(String error) {
@@ -346,7 +344,6 @@ class _ConversationActivityState extends State<ConversationActivity>
   void _processSpeechResult(String recognizedText, bool isFinal) {
     if (!mounted) return;
 
-    // Reset pause detection
     _pauseTimer?.cancel();
     _pauseTimer = Timer(Duration(milliseconds: PAUSE_THRESHOLD), () {
       if (mounted && _isListening) {
@@ -355,15 +352,14 @@ class _ConversationActivityState extends State<ConversationActivity>
     });
 
     setState(() {
-      if (_messages.isEmpty ||
-          (_messages.last.isUser && _messages.last.isFinal)) {
+      _recognizedText = recognizedText;
+      if (isFinal) {
         _messages.add(ChatMessage(
           initialText: recognizedText,
           isUser: true,
-          isFinal: false,
+          isFinal: true,
         ));
-      } else if (_messages.last.isUser) {
-        _messages.last.updateText(recognizedText);
+        _scrollToBottom();
       }
     });
   }
@@ -439,6 +435,7 @@ class _ConversationActivityState extends State<ConversationActivity>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Message History
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
@@ -447,9 +444,10 @@ class _ConversationActivityState extends State<ConversationActivity>
                     _buildMessageBubble(_messages[index]),
               ),
             ),
+
             Column(
               children: [
-                // Assistant's message
+                // Current Assistant Message
                 if (_ttsServiceHandler?.isPlaying ?? false)
                   Align(
                     alignment: Alignment.centerLeft,
@@ -463,15 +461,12 @@ class _ConversationActivityState extends State<ConversationActivity>
                       ),
                       child: Text(
                         _currentWord,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.black87,
-                        ),
+                        style: TextStyle(fontSize: 16, color: Colors.black87),
                       ),
                     ),
                   ),
 
-                // User's message
+                // Current User Message
                 if (_isListening && _recognizedText.isNotEmpty)
                   Align(
                     alignment: Alignment.centerRight,
@@ -485,10 +480,7 @@ class _ConversationActivityState extends State<ConversationActivity>
                       ),
                       child: Text(
                         _recognizedText,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.black87,
-                        ),
+                        style: TextStyle(fontSize: 16, color: Colors.black87),
                       ),
                     ),
                   ),
