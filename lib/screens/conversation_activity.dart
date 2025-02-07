@@ -88,7 +88,7 @@ class _ConversationActivityState extends State<ConversationActivity>
     if (!mounted) return;
     if (_messages.isNotEmpty && !_messages.last.isUser) {
       setState(() {
-        _messages.last.displayedText = word;
+        _messages.last.displayedText += ' $word';
       });
       _scrollToBottom();
     }
@@ -114,24 +114,34 @@ class _ConversationActivityState extends State<ConversationActivity>
   void onComplete() {
     debugPrint('TTS Complete');
     setState(() {
-      if (_isInitializing) {
-        _isInitializing = false;
+      if (_messages.isNotEmpty && !_messages.last.isUser) {
+        _messages.last.isFinal = true;
+        _messages.last.displayedText = _messages.last.text;
       }
       _isSpeaking = false;
       _isProcessing = false;
-      _startListening();
+
+      // Auto-start listening after TTS completes
+      if (_isConversationActive && !_conversationEnded) {
+        _startListening();
+      }
     });
   }
 
   void _startConversation() {
+    if (_conversationEnded) {
+      _showWarningDialog();
+      return;
+    }
+
     setState(() {
       _isConversationActive = true;
       _isInitializing = true;
       _conversationEnded = false;
     });
 
-    // Send initial prompt to ChatGPT
-    _sendInitialPrompt();
+    // Start listening immediately when conversation starts
+    _startListening();
   }
 
   void _sendInitialPrompt() {
@@ -149,12 +159,9 @@ class _ConversationActivityState extends State<ConversationActivity>
     _speechHandler?.startListening((String text) {
       setState(() {
         _recognizedText = text;
+        _isListening = true;
         _processSpeechResult(text, false);
       });
-    });
-
-    setState(() {
-      _isListening = true;
     });
   }
 
@@ -216,11 +223,13 @@ class _ConversationActivityState extends State<ConversationActivity>
 
   void _onAIResponse(String response) {
     if (response.isEmpty) return;
+
     setState(() {
       _messages.add(ChatMessage(
         initialText: response,
         isUser: false,
-        displayedText: '', // Start empty, will be filled word by word
+        isFinal: false,
+        displayedText: '', // Start empty for assistant messages
       ));
     });
     _scrollToBottom();
@@ -353,14 +362,17 @@ class _ConversationActivityState extends State<ConversationActivity>
 
     setState(() {
       _recognizedText = recognizedText;
-      if (isFinal) {
+      if (_messages.isEmpty || _messages.last.isFinal) {
         _messages.add(ChatMessage(
           initialText: recognizedText,
           isUser: true,
-          isFinal: true,
+          isFinal: isFinal,
         ));
-        _scrollToBottom();
+      } else if (_messages.last.isUser) {
+        _messages.last.updateText(recognizedText);
+        _messages.last.isFinal = isFinal;
       }
+      _scrollToBottom();
     });
   }
 
