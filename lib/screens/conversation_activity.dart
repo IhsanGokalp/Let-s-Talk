@@ -461,42 +461,42 @@ class _ConversationActivityState extends State<ConversationActivity>
             Column(
               children: [
                 // Current Assistant Message
-                if (_ttsServiceHandler?.isPlaying ?? false)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Container(
-                      margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                      padding:
-                          EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.green[100],
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        _currentWord,
-                        style: TextStyle(fontSize: 16, color: Colors.black87),
-                      ),
-                    ),
-                  ),
+                // if (_ttsServiceHandler?.isPlaying ?? false)
+                //   Align(
+                //     alignment: Alignment.centerLeft,
+                //     child: Container(
+                //       margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                //       padding:
+                //           EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                //       decoration: BoxDecoration(
+                //         color: Colors.green[100],
+                //         borderRadius: BorderRadius.circular(20),
+                //       ),
+                //       child: Text(
+                //         _currentWord,
+                //         style: TextStyle(fontSize: 16, color: Colors.black87),
+                //       ),
+                //     ),
+                //   ),
 
                 // Current User Message
-                if (_isListening && _recognizedText.isNotEmpty)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Container(
-                      margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                      padding:
-                          EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[100],
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        _recognizedText,
-                        style: TextStyle(fontSize: 16, color: Colors.black87),
-                      ),
-                    ),
-                  ),
+                // if (_isListening && _recognizedText.isNotEmpty)
+                //   Align(
+                //     alignment: Alignment.centerRight,
+                //     child: Container(
+                //       margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                //       padding:
+                //           EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                //       decoration: BoxDecoration(
+                //         color: Colors.blue[100],
+                //         borderRadius: BorderRadius.circular(20),
+                //       ),
+                //       child: Text(
+                //         _recognizedText,
+                //         style: TextStyle(fontSize: 16, color: Colors.black87),
+                //       ),
+                //     ),
+                //   ),
 
                 SizedBox(height: 20),
 
