@@ -72,15 +72,19 @@ class _ConversationActivityState extends State<ConversationActivity>
   bool _isInitializing = true;
 
   void _finalizeAndSendSpeech(String recognizedText) {
-    setState(() {
-      if (_messages.isNotEmpty && _messages.last.isUser) {
-        _messages.last.isFinal = true;
-        _messages.last.isComplete = true;
-      }
-      _isListening = false;
-    });
+    if (!mounted) return;
 
-    _sendToChatGPT(recognizedText);
+    // Only send if the message isn't already finalized
+    if (_messages.isNotEmpty &&
+        _messages.last.isUser &&
+        !_messages.last.isFinal) {
+      setState(() {
+        _messages.last.isFinal = true;
+        _isListening = false;
+      });
+
+      _sendToChatGPT(recognizedText);
+    }
   }
 
   @override
@@ -154,13 +158,12 @@ class _ConversationActivityState extends State<ConversationActivity>
   }
 
   void _startListening() {
-    if (!_isConversationActive) return;
-
     _speechHandler?.startListening((String text) {
       setState(() {
         _recognizedText = text;
         _isListening = true;
-        _processSpeechResult(text, false);
+        _processSpeechResult(
+            text, false); // Changed to false to prevent immediate sending
       });
     });
   }
@@ -366,13 +369,11 @@ class _ConversationActivityState extends State<ConversationActivity>
         _messages.add(ChatMessage(
           initialText: recognizedText,
           isUser: true,
-          isFinal: isFinal,
+          isFinal: false,
         ));
       } else if (_messages.last.isUser) {
         _messages.last.updateText(recognizedText);
-        _messages.last.isFinal = isFinal;
       }
-      _scrollToBottom();
     });
   }
 
