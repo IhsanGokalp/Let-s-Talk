@@ -11,12 +11,15 @@ class ConversationService {
     final file = File('${directory.path}/$fileName');
 
     final buffer = StringBuffer();
-    buffer.writeln('Time,Speaker,Message');
+    buffer.writeln('Time,Speaker,Message,IsFinal');
 
     for (var message in messages) {
+      // Use text instead of displayedText for assistant messages
+      final messageText = message.isUser ? message.displayedText : message.text;
       buffer.writeln('${DateFormat('HH:mm:ss').format(message.timestamp)},'
           '${message.isUser ? "User" : "Assistant"},'
-          '"${message.text.replaceAll('"', '""')}"');
+          '"${messageText.replaceAll('"', '""')}",'
+          '${message.isFinal}');
     }
 
     await file.writeAsString(buffer.toString());
@@ -38,14 +41,17 @@ class ConversationService {
 
     return lines.skip(1).map((line) {
       final parts = line.split(',');
-      final text = parts[2].replaceAll('"', '');
+      final timestamp = DateFormat('HH:mm:ss').parse(parts[0]);
       final isUser = parts[1] == "User";
+      final text = parts[2].replaceAll('"', '');
+      final isFinal = parts[3] == 'true';
 
       return ChatMessage(
         initialText: text,
         isUser: isUser,
         isFinal: true,
         isComplete: true,
+        displayedText: text, // Set displayed text for both user and assistant
       );
     }).toList();
   }
