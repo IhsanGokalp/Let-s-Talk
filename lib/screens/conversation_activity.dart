@@ -6,6 +6,11 @@ import 'package:lets_tallk/services/tts_service_handler.dart';
 import 'package:lets_tallk/widgets/dot_waveform_animator.dart';
 import 'package:lets_tallk/config/env_config.dart';
 import 'dart:async'; // Add this import at the top
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:intl/intl.dart';
+import 'package:lets_tallk/services/conversation_service.dart';
+import 'package:lets_tallk/models/chat_message.dart'; // Add this import
 
 class ConversationActivity extends StatefulWidget {
   final UserData userData;
@@ -15,31 +20,6 @@ class ConversationActivity extends StatefulWidget {
 
   @override
   _ConversationActivityState createState() => _ConversationActivityState();
-}
-
-class ChatMessage {
-  String text;
-  final bool isUser;
-  String displayedText;
-  bool isFinal;
-  bool isComplete;
-
-  ChatMessage({
-    required String initialText,
-    required this.isUser,
-    this.isFinal = false,
-    this.isComplete = false,
-    String? displayedText,
-  })  : text = initialText,
-        displayedText = displayedText ??
-            (isUser
-                ? initialText
-                : ''); // Initialize empty for assistant messages
-
-  void updateText(String newText) {
-    text = newText;
-    displayedText = newText;
-  }
 }
 
 class _ConversationActivityState extends State<ConversationActivity>
@@ -62,6 +42,7 @@ class _ConversationActivityState extends State<ConversationActivity>
 
   final List<ChatMessage> _messages = [];
   final ScrollController _scrollController = ScrollController();
+  final ConversationService _conversationService = ConversationService();
 
   Timer? _speechTimeout;
   static const int SPEECH_COMPLETION_DELAY = 1500; // 1.5 seconds
@@ -413,6 +394,68 @@ class _ConversationActivityState extends State<ConversationActivity>
     );
   }
 
+  Future<void> _showHistoryDialog() async {
+    final files = await _conversationService.getConversationFiles();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Saved Conversations'),
+          content: Container(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: files.length,
+              itemBuilder: (context, index) {
+                final fileName = files[index].split('/').last;
+                return ListTile(
+                  title: Text(fileName),
+                  onTap: () => Navigator.pop(context, files[index]),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+
+    if (result != null) {
+      final messages = await _conversationService.importConversation(result);
+      setState(() {
+        _messages.clear();
+        _messages.addAll(messages as Iterable<ChatMessage>);
+      });
+    }
+  }
+
+  Future<void> _exportConversation() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final fileName =
+          'conversation_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv';
+      final file = File('${directory.path}/$fileName');
+
+      final buffer = StringBuffer();
+      buffer.writeln('Time,Speaker,Message');
+
+      for (var message in _messages) {
+        buffer.writeln('${DateFormat('HH:mm:ss').format(message.timestamp)},'
+            '${message.isUser ? "User" : "Assistant"},'
+            '"${message.text.replaceAll('"', '""')}"');
+      }
+
+      await file.writeAsString(buffer.toString());
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Conversation saved to: ${file.path}')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save conversation: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     debugPrint(
@@ -423,7 +466,27 @@ class _ConversationActivityState extends State<ConversationActivity>
         title: Text("${widget.userData.name} Let's Talk"),
         backgroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: Icon(Icons.history),
+            onPressed: _showHistoryDialog,
+          ),
           // Add conversation state indicator
+          IconButton(
+            icon: Icon(Icons.save),
+            onPressed: () async {
+              try {
+                final path =
+                    await _conversationService.exportConversation(_messages);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Conversation saved to: $path')),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to save conversation: $e')),
+                );
+              }
+            },
+          ),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
