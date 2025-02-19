@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:lets_tallk/services/conversation_service.dart';
 import 'package:lets_tallk/models/chat_message.dart'; // Add this import
+import '../models/conversation_import_result.dart';
 
 class ConversationActivity extends StatefulWidget {
   final UserData userData;
@@ -407,10 +408,24 @@ class _ConversationActivityState extends State<ConversationActivity>
               shrinkWrap: true,
               itemCount: files.length,
               itemBuilder: (context, index) {
-                final fileName = files[index].split('/').last;
-                return ListTile(
-                  title: Text(fileName),
-                  onTap: () => Navigator.pop(context, files[index]),
+                final file = File(files[index]);
+                final fileName = file.path.split('/').last;
+                final timestamp =
+                    fileName.substring(12, 26); // Extract timestamp
+                final formattedDate = DateFormat('yyyy-MM-dd HH:mm:ss')
+                    .format(DateTime.parse(timestamp));
+
+                return FutureBuilder<ConversationImportResult>(
+                  future: _conversationService.importConversation(files[index]),
+                  builder: (context, snapshot) {
+                    final description =
+                        snapshot.data?.description ?? "Loading...";
+                    return ListTile(
+                      title: Text(formattedDate),
+                      subtitle: Text(description),
+                      onTap: () => Navigator.pop(context, files[index]),
+                    );
+                  },
                 );
               },
             ),
@@ -420,10 +435,12 @@ class _ConversationActivityState extends State<ConversationActivity>
     );
 
     if (result != null) {
-      final messages = await _conversationService.importConversation(result);
+      final importResult =
+          await _conversationService.importConversation(result);
+      final messages = importResult.messages;
       setState(() {
         _messages.clear();
-        _messages.addAll(messages as Iterable<ChatMessage>);
+        _messages.addAll(messages);
       });
     }
   }
@@ -456,6 +473,51 @@ class _ConversationActivityState extends State<ConversationActivity>
     }
   }
 
+  Future<void> _showSaveDialog() async {
+    final TextEditingController descriptionController = TextEditingController();
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Save Conversation'),
+          content: TextField(
+            controller: descriptionController,
+            decoration: InputDecoration(
+              hintText: 'Enter conversation description',
+              labelText: 'Description',
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () => Navigator.pop(context),
+            ),
+            TextButton(
+              child: Text('Save'),
+              onPressed: () =>
+                  Navigator.pop(context, descriptionController.text),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null) {
+      try {
+        final path = await _conversationService.exportConversation(_messages,
+            description: result);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Conversation saved')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save conversation')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     debugPrint(
@@ -468,7 +530,20 @@ class _ConversationActivityState extends State<ConversationActivity>
         actions: [
           IconButton(
             icon: Icon(Icons.history),
-            onPressed: _showHistoryDialog,
+            onPressed: () async {
+              // Navigate to history screen which returns a file path
+              final result = await Navigator.pushNamed(context, '/history');
+              if (result != null && result is String) {
+                final importResult =
+                    await _conversationService.importConversation(result);
+                setState(() {
+                  _messages.clear();
+                  _messages.addAll(importResult.messages);
+                });
+                // Now you also have a description that you can use wherever needed:
+                print('Imported description: ${importResult.description}');
+              }
+            },
           ),
           // Add conversation state indicator
           IconButton(
@@ -488,19 +563,25 @@ class _ConversationActivityState extends State<ConversationActivity>
             },
           ),
           Padding(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.only(right: 8.0),
             child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 if (_isProcessing)
-                  Icon(Icons.sync, color: Colors.orange)
+                  Icon(Icons.sync, color: Colors.orange, size: 20)
                 else if (_speechHandler?.isListening ?? false)
-                  Icon(Icons.mic, color: Colors.green)
+                  Icon(Icons.mic, color: Colors.green, size: 20)
                 else if (_ttsServiceHandler?.isPlaying ?? false)
-                  Icon(Icons.volume_up, color: Colors.blue)
+                  Icon(Icons.volume_up, color: Colors.blue, size: 20)
                 else
-                  Icon(Icons.mic_off, color: Colors.red),
-                SizedBox(width: 8),
-                Text(_getStatusText()),
+                  Icon(Icons.mic_off, color: Colors.red, size: 20),
+                SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    _getStatusText(),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
           ),

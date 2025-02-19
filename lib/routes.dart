@@ -6,11 +6,13 @@ import 'screens/setup_page3.dart';
 import 'screens/review_page.dart';
 import 'models/user_data.dart';
 import '../screens/conversation_activity.dart';
+import 'screens/conversation_history_screen.dart'; // Add this import
 
 /// Define the initial route and any routes that do not require arguments
 final Map<String, WidgetBuilder> staticRoutes = {
   '/': (context) => WelcomePage(),
   '/setup1': (context) => SetupPage1(),
+  '/history': (context) => ConversationHistoryScreen(), // Add this line
 };
 
 /// Generate routes dynamically, especially for pages that require arguments
@@ -35,6 +37,10 @@ Route<dynamic>? generateRoute(RouteSettings settings) {
             userData: userData), // Pass UserData to ConversationActivity
       );
     // Pass user data
+    case '/history':
+      return MaterialPageRoute(
+        builder: (_) => ConversationHistoryScreen(),
+      );
 
     default:
       return null; // If the route is not defined, return null.
