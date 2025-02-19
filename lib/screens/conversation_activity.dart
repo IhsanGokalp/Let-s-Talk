@@ -474,19 +474,36 @@ class _ConversationActivityState extends State<ConversationActivity>
   }
 
   Future<void> _showSaveDialog() async {
-    final TextEditingController descriptionController = TextEditingController();
+    String? description;
+    try {
+      // Generate description using ChatGPT
+      description =
+          await _chatGPTServiceHandler?.generateDescription(_messages);
+    } catch (e) {
+      print('Error generating description: $e');
+    }
+
+    final TextEditingController descriptionController = TextEditingController(
+        text: description ??
+            "Conversation ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}");
 
     final result = await showDialog<String>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Save Conversation'),
-          content: TextField(
-            controller: descriptionController,
-            decoration: InputDecoration(
-              hintText: 'Enter conversation description',
-              labelText: 'Description',
-            ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Generated Description:'),
+              TextField(
+                controller: descriptionController,
+                decoration: InputDecoration(
+                  labelText: 'Description',
+                  hintText: 'Enter conversation description',
+                ),
+              ),
+            ],
           ),
           actions: [
             TextButton(
@@ -530,37 +547,12 @@ class _ConversationActivityState extends State<ConversationActivity>
         actions: [
           IconButton(
             icon: Icon(Icons.history),
-            onPressed: () async {
-              // Navigate to history screen which returns a file path
-              final result = await Navigator.pushNamed(context, '/history');
-              if (result != null && result is String) {
-                final importResult =
-                    await _conversationService.importConversation(result);
-                setState(() {
-                  _messages.clear();
-                  _messages.addAll(importResult.messages);
-                });
-                // Now you also have a description that you can use wherever needed:
-                print('Imported description: ${importResult.description}');
-              }
-            },
+            onPressed: _showHistoryDialog,
           ),
-          // Add conversation state indicator
           IconButton(
             icon: Icon(Icons.save),
-            onPressed: () async {
-              try {
-                final path =
-                    await _conversationService.exportConversation(_messages);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Conversation saved to: $path')),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Failed to save conversation: $e')),
-                );
-              }
-            },
+            onPressed:
+                _showSaveDialog, // Change this line to call _showSaveDialog
           ),
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
