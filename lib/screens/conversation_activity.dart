@@ -408,25 +408,66 @@ class _ConversationActivityState extends State<ConversationActivity>
               shrinkWrap: true,
               itemCount: files.length,
               itemBuilder: (context, index) {
-                final file = File(files[index]);
-                final fileName = file.path.split('/').last;
-                final timestamp =
-                    fileName.substring(12, 26); // Extract timestamp
-                final formattedDate = DateFormat('yyyy-MM-dd HH:mm:ss')
-                    .format(DateTime.parse(timestamp));
+                final filePath = files[index];
+                final fileName = filePath.split('/').last;
+                print('Processing file: $fileName'); // Debug print
 
-                return FutureBuilder<ConversationImportResult>(
-                  future: _conversationService.importConversation(files[index]),
-                  builder: (context, snapshot) {
-                    final description =
-                        snapshot.data?.description ?? "Loading...";
-                    return ListTile(
+                try {
+                  // Extract timestamp between 'conversation_' and '.csv'
+                  final start = 'conversation_'.length;
+                  final end = fileName.lastIndexOf('.csv');
+                  final timestamp = fileName.substring(start, end);
+                  print('Extracted timestamp: $timestamp'); // Debug print
+
+                  // Split into date and time parts
+                  final parts = timestamp.split('_');
+                  if (parts.length != 2) {
+                    throw FormatException('Invalid timestamp format');
+                  }
+
+                  final dateStr = parts[0]; // yyyyMMdd
+                  final timeStr = parts[1]; // HHmmss
+                  print('Date: $dateStr, Time: $timeStr'); // Debug print
+
+                  final year = int.parse(dateStr.substring(0, 4));
+                  final month = int.parse(dateStr.substring(4, 6));
+                  final day = int.parse(dateStr.substring(6, 8));
+                  final hour = int.parse(timeStr.substring(0, 2));
+                  final minute = int.parse(timeStr.substring(2, 4));
+                  final second = int.parse(timeStr.substring(4, 6));
+
+                  final dateTime =
+                      DateTime(year, month, day, hour, minute, second);
+                  final formattedDate =
+                      DateFormat('MMM dd, yyyy HH:mm:ss').format(dateTime);
+                  print('Formatted date: $formattedDate'); // Debug print
+
+                  return Card(
+                    margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: ListTile(
                       title: Text(formattedDate),
-                      subtitle: Text(description),
-                      onTap: () => Navigator.pop(context, files[index]),
-                    );
-                  },
-                );
+                      subtitle: FutureBuilder<ConversationImportResult>(
+                        future:
+                            _conversationService.importConversation(filePath),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasData) {
+                            return Text(
+                                snapshot.data?.description ?? 'No description');
+                          }
+                          return Text('Loading...');
+                        },
+                      ),
+                      leading: Icon(Icons.history),
+                      onTap: () => Navigator.pop(context, filePath),
+                    ),
+                  );
+                } catch (e) {
+                  print('Error parsing date: $e\nFilename: $fileName');
+                  return ListTile(
+                    title: Text(fileName),
+                    subtitle: Text('Error loading conversation'),
+                  );
+                }
               },
             ),
           ),
@@ -437,10 +478,9 @@ class _ConversationActivityState extends State<ConversationActivity>
     if (result != null) {
       final importResult =
           await _conversationService.importConversation(result);
-      final messages = importResult.messages;
       setState(() {
         _messages.clear();
-        _messages.addAll(messages);
+        _messages.addAll(importResult.messages);
       });
     }
   }
@@ -648,29 +688,41 @@ class _ConversationActivityState extends State<ConversationActivity>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                ElevatedButton(
-                  onPressed: _startConversation,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                  ),
-                  child: Text(
-                    _isConversationActive
-                        ? "Conversation Active"
-                        : "Start Conversation",
-                    style: TextStyle(fontSize: 18),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: ElevatedButton(
+                      onPressed: _startConversation,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        padding: EdgeInsets.symmetric(vertical: 15),
+                      ),
+                      child: Text(
+                        _isConversationActive ? "Active" : "Start",
+                        style: TextStyle(fontSize: 16),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
                 ),
-                ElevatedButton(
-                  onPressed: _stopConversation,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        _isConversationActive ? Colors.red : Colors.grey,
-                    padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                  ),
-                  child: Text(
-                    "End Conversation",
-                    style: TextStyle(fontSize: 18),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: ElevatedButton(
+                      onPressed: _stopConversation,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            _isConversationActive ? Colors.red : Colors.grey,
+                        padding: EdgeInsets.symmetric(vertical: 15),
+                      ),
+                      child: Text(
+                        "End",
+                        style: TextStyle(fontSize: 16),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
                 ),
               ],

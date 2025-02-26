@@ -31,7 +31,7 @@ class SpeechHandler {
     required this.context,
     required this.conversationController,
   }) {
-    _initializeSpeechRecognizer();
+    initializeAndCheck();
   }
 
   // Add this method to set the callback
@@ -42,18 +42,20 @@ class SpeechHandler {
   Stream<double> get soundLevelStream => _soundLevelController.stream;
   bool get isListening => _isListening;
 
-  Future<void> _initializeSpeechRecognizer() async {
-    try {
-      bool available = await _speechToText.initialize(
-        onError: (error) => _handleError(error.errorMsg),
-        onStatus: (status) => _handleStatus(status),
-      );
+  Future<bool> _checkPermission() async {
+    bool hasPermission = await _speechToText.hasPermission;
+    if (!hasPermission) {
+      hasPermission = await _speechToText.initialize();
+    }
+    return hasPermission;
+  }
 
-      if (!available) {
-        _showToast('Speech recognition is not available on this device.');
-      }
-    } catch (e) {
-      _showToast('Error initializing speech recognition: $e');
+  void _handleError(String error) {
+    print('Speech recognition error: $error');
+    _showToast(error);
+    if (_isListening) {
+      _speechToText.stop();
+      _isListening = false;
     }
   }
 
@@ -61,7 +63,7 @@ class SpeechHandler {
     try {
       bool available = await _speechToText.initialize(
         onError: (error) => _handleError(error.errorMsg),
-        onStatus: (status) => _handleStatus(status),
+        onStatus: _handleStatus,
       );
       debugPrint('Speech recognition available: $available');
       return available;
@@ -71,27 +73,22 @@ class SpeechHandler {
     }
   }
 
-  void startListening(Function(String) onResult) async {
-    if (!_isListening) {
-      bool available = await _speechToText.initialize();
-      if (available) {
+  void _handleStatus(String status) {
+    print('Speech recognition status: $status');
+    switch (status) {
+      case 'listening':
         _isListening = true;
-
-        _speechToText.listen(
-          onResult: (result) {
-            // Handle partial results
-            onResult(result.recognizedWords);
-            if (result.finalResult) {
-              _processSpeech(result.recognizedWords);
-            }
-          },
-          listenFor: Duration(seconds: 30),
-          localeId: 'en_US',
-          cancelOnError: true,
-          partialResults: true, // Enable partial results
-        );
-      }
+        break;
+      case 'notListening':
+        _isListening = false;
+        break;
     }
+  }
+
+  void _showToast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   void _startSpeechTimeout() {
@@ -123,30 +120,6 @@ class SpeechHandler {
     }
   }
 
-  void _handleStatus(String status) {
-    print('Speech recognition status: $status');
-    switch (status) {
-      case 'listening':
-        _isListening = true;
-        break;
-      case 'notListening':
-        _isListening = false;
-        break;
-    }
-  }
-
-  void _handleError(String error) {
-    print('Speech recognition error: $error');
-    _showToast(error);
-    stopListening();
-  }
-
-  void _showToast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-
   void clearConversationHistory() {
     conversationHistory.clear();
     conversationController.clear();
@@ -157,14 +130,41 @@ class SpeechHandler {
     // Additional cleanup if needed
   }
 
+  void startListening(Function(String) onResult) async {
+    if (!_isListening) {
+      bool hasPermission = await _checkPermission();
+      if (!hasPermission) {
+        _showToast('Microphone permission is required');
+        return;
+      }
+
+      bool available = await _speechToText.initialize();
+      if (available) {
+        _isListening = true;
+        _speechToText.listen(
+          onResult: (result) {
+            onResult(result.recognizedWords);
+            if (result.finalResult) {
+              _processSpeech(result.recognizedWords);
+            }
+          },
+          listenFor: Duration(seconds: 30),
+          localeId: 'en_US',
+          cancelOnError: true,
+          partialResults: true,
+        );
+      } else {
+        _showToast('Speech recognition failed to initialize');
+      }
+    }
+  }
+
   void dispose() {
     _speechStartTimer?.cancel();
     _userStopSpeakingTimer?.cancel();
     _soundLevelController.close();
     _speechToText.cancel();
   }
-
-  // ... existing code ...
 }
 
 // Widget for visualizing sound levels (similar to DotWaveformAnimator)
@@ -205,13 +205,33 @@ class _ConversationScreenState extends State<ConversationScreen> {
   late SpeechHandler _speechHandler;
   final TextEditingController _conversationController = TextEditingController();
 
-  @override
-  void initState() {
-    super.initState();
+  void _initializeHandlers() {
     _speechHandler = SpeechHandler(
       context: context,
       conversationController: _conversationController,
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeHandlers();
+    _checkAndInitializeSpeech();
+  }
+
+  Future<void> _checkAndInitializeSpeech() async {
+    bool available = await _speechHandler?.initializeAndCheck() ?? false;
+    if (!available) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Speech recognition is not available or permission denied'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   @override

@@ -1,16 +1,37 @@
+buildscript {
+    ext.kotlin_version = '1.5.31' // Replace with your project's Kotlin version
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:7.0.4' // Replace with your project's Gradle version
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath 'com.google.gms:google-services:4.3.10' // If you are using Firebase
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.5.21' // If needed
+    }
+}
+
 allprojects {
     repositories {
         google()
         mavenCentral()
     }
 }
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
 
+// Add this line to include Flutter's Gradle
+apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
+
+android {
+    compileSdkVersion compileSdkVersion
+}
 rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
-}
-subprojects {
-    project.evaluationDependsOn(":app")
+    project.evaluationDependsOn(':app')
 }
 
 tasks.register("clean", Delete) {

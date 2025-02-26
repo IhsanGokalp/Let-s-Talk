@@ -1,43 +1,51 @@
 plugins {
-    id "com.android.application"
-    id "kotlin-android"
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
-    id "dev.flutter.flutter-gradle-plugin"
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
-    namespace = "com.example.lets_tallk"
-    compileSdk = 34
-    ndkVersion = "25.1.8937393"
+    namespace "com.example.lets_tallk"
+    compileSdkVersion flutter.compileSdkVersion
+    ndkVersion flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_1_8
+        jvmTarget = '17'
     }
 
-defaultConfig {
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    defaultConfig {
         applicationId "com.example.lets_tallk"
-        minSdkVersion 21
-        targetSdkVersion 33
+        minSdkVersion flutter.minSdkVersion
+        targetSdkVersion flutter.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
         multiDexEnabled true
     }
+    
 
-
-    buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
-        }
-    }
+    // buildTypes {
+    //     release {
+    //         signingConfig signingConfigs.debug
+    //         minifyEnabled true
+    //         proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+    //     }
+    // }
 }
+
 dependencies {
-    classpath 'com.android.tools.build:gradle:7.4.2'
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0"
+    implementation 'androidx.multidex:multidex:2.0.1'
+    implementation "io.flutter:flutter_embedding_android:1.0.0-3316dd8728419ad3534e3f6112aa6291f587078a"
 }
+
 flutter {
-    source = "../.."
+    source '../..'
 }
