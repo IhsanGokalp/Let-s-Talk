@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
 import 'routes.dart';
-
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 
 void main() async {
-  // Add this line to initialize Flutter bindings
-  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  await dotenv.load(fileName: "assets/.env");
-  runApp(MyApp());
+    // Add platform-specific initialization
+    if (Platform.isAndroid) {
+      // Allow more time for Android emulator to connect
+      await Future.delayed(Duration(seconds: 2));
+    }
+
+    await dotenv.load(fileName: "assets/.env");
+    runApp(MyApp());
+  } catch (e) {
+    print('Initialization error: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {
