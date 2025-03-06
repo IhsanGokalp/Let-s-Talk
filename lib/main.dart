@@ -1,34 +1,47 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'routes.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:path_provider/path_provider.dart';
-import 'dart:io';
+import 'screens/welcome_page.dart';
+import 'screens/setup_page1.dart';
 
-void main() async {
+Future<void> main() async {
   try {
+    // Ensure Flutter bindings are initialized first
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Add platform-specific initialization
-    if (Platform.isAndroid) {
-      // Allow more time for Android emulator to connect
-      await Future.delayed(Duration(seconds: 2));
+    // Load environment variables
+    await dotenv.load(fileName: "assets/.env");
+
+    // Add initialization delay only for Android
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      debugPrint('Running on Android - adding initialization delay');
+      await Future.delayed(const Duration(seconds: 2));
     }
 
-    await dotenv.load(fileName: "assets/.env");
-    runApp(MyApp());
-  } catch (e) {
-    print('Initialization error: $e');
+    runApp(const MyApp());
+  } catch (e, stackTrace) {
+    debugPrint('Initialization error: $e');
+    debugPrint('Stack trace: $stackTrace');
+    // Ensure the app still runs even if there's an initialization error
+    runApp(const MyApp());
   }
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      initialRoute: '/', // Set the initial route
-      routes: staticRoutes, // Static routes without arguments
-      onGenerateRoute: generateRoute, // Dynamic routes with arguments
+      title: 'Let\'s Talk',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      home: WelcomePage(), // Set explicit home widget
+      onGenerateRoute: generateRoute,
     );
   }
 }

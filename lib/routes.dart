@@ -5,44 +5,59 @@ import 'screens/setup_page2.dart';
 import 'screens/setup_page3.dart';
 import 'screens/review_page.dart';
 import 'models/user_data.dart';
-import '../screens/conversation_activity.dart';
-import 'screens/conversation_history_screen.dart'; // Add this import
+import 'screens/conversation_activity.dart';
+import 'screens/conversation_history_screen.dart';
 
-/// Define the initial route and any routes that do not require arguments
-final Map<String, WidgetBuilder> staticRoutes = {
-  '/': (context) => WelcomePage(),
-  '/setup1': (context) => SetupPage1(),
-  '/history': (context) => ConversationHistoryScreen(), // Add this line
-};
-
-/// Generate routes dynamically, especially for pages that require arguments
 Route<dynamic>? generateRoute(RouteSettings settings) {
   switch (settings.name) {
+    case '/':
+      return PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => WelcomePage(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      );
+
+    case '/setup1':
+      return PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => SetupPage1(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      );
+
     case '/setup2':
+      if (settings.arguments is! UserData) return null;
       final userData = settings.arguments as UserData;
       return MaterialPageRoute(builder: (_) => SetupPage2(userData: userData));
 
     case '/setup3':
+      if (settings.arguments is! UserData) return null;
       final userData = settings.arguments as UserData;
       return MaterialPageRoute(builder: (_) => SetupPage3(userData: userData));
 
     case '/review':
+      if (settings.arguments is! UserData) return null;
       final userData = settings.arguments as UserData;
       return MaterialPageRoute(builder: (_) => ReviewPage(userData: userData));
 
     case '/mainConversation':
+      if (settings.arguments is! UserData) return null;
       final userData = settings.arguments as UserData;
       return MaterialPageRoute(
-        builder: (_) => ConversationActivity(
-            userData: userData), // Pass UserData to ConversationActivity
-      );
-    // Pass user data
+          builder: (_) => ConversationActivity(userData: userData));
+
     case '/history':
-      return MaterialPageRoute(
-        builder: (_) => ConversationHistoryScreen(),
-      );
+      return MaterialPageRoute(builder: (_) => ConversationHistoryScreen());
 
     default:
-      return null; // If the route is not defined, return null.
+      // Return a 404 error page
+      return MaterialPageRoute(
+        builder: (_) => Scaffold(
+          body: Center(
+            child: Text('Page not found: ${settings.name}'),
+          ),
+        ),
+      );
   }
 }

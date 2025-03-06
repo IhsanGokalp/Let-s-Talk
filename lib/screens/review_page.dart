@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/user_data.dart';
+import '../services/user_service.dart';
 
 class ReviewPage extends StatefulWidget {
   final UserData userData;
@@ -11,6 +12,7 @@ class ReviewPage extends StatefulWidget {
 }
 
 class _ReviewPageState extends State<ReviewPage> {
+  final UserService _userService = UserService();
   String? selectedLanguage;
   String? selectedAgeRange;
   Set<String> selectedTopics = {};
@@ -34,6 +36,23 @@ class _ReviewPageState extends State<ReviewPage> {
     widget.userData.selectedAgeRange = selectedAgeRange;
     widget.userData.selectedTopics = selectedTopics;
     widget.userData.selectedBuddy = selectedBuddy;
+  }
+
+  void _saveUserAndNavigate() async {
+    try {
+      await _userService.saveUser(widget.userData);
+
+      // Navigate to conversation
+      Navigator.pushNamed(
+        context,
+        '/mainConversation',
+        arguments: widget.userData,
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save user data')),
+      );
+    }
   }
 
   @override
@@ -191,14 +210,7 @@ class _ReviewPageState extends State<ReviewPage> {
             Align(
               alignment: Alignment.center,
               child: ElevatedButton(
-                onPressed: () {
-                  // Navigate to ConversationActivity and pass userData
-                  Navigator.pushNamed(
-                    context,
-                    '/mainConversation',
-                    arguments: widget.userData, // Pass the updated user data
-                  );
-                },
+                onPressed: _saveUserAndNavigate,
                 child: Text("Begin Conversation"),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.black,
