@@ -575,6 +575,10 @@ class _ConversationActivityState extends State<ConversationActivity>
     }
   }
 
+  void _navigateToSetup3() {
+    Navigator.pushNamed(context, '/review', arguments: widget.userData);
+  }
+
   @override
   Widget build(BuildContext context) {
     debugPrint(
@@ -585,14 +589,49 @@ class _ConversationActivityState extends State<ConversationActivity>
         title: Text("${widget.userData.name} Let's Talk"),
         backgroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: Icon(Icons.history),
-            onPressed: _showHistoryDialog,
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert), // 3 dots icon
+            onSelected: (String result) {
+              if (result == 'history') {
+                _showHistoryDialog();
+              } else if (result == 'save') {
+                _showSaveDialog();
+              } else if (result == 'edit') {
+                _navigateToSetup3();
+              }
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'history',
+                child: ListTile(
+                  leading: Icon(Icons.history),
+                  title: Text('History'),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'save',
+                child: ListTile(
+                  leading: Icon(Icons.save),
+                  title: Text('Save'),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'edit',
+                child: ListTile(
+                  leading: Icon(Icons.edit),
+                  title: Text('Edit Preferences'),
+                ),
+              ),
+            ],
           ),
-          IconButton(
-            icon: Icon(Icons.save),
-            onPressed:
-                _showSaveDialog, // Change this line to call _showSaveDialog
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ... (rest of your status icons)
+              ],
+            ),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
