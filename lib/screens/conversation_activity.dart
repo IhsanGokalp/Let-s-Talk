@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:lets_tallk/services/conversation_service.dart';
 import 'package:lets_tallk/models/chat_message.dart'; // Add this import
 import '../models/conversation_import_result.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ConversationActivity extends StatefulWidget {
   final UserData userData;
@@ -35,6 +36,10 @@ class _ConversationActivityState extends State<ConversationActivity>
   bool _hasTalked = false;
   bool _conversationEnded = false;
   final List<Map<String, String>> _conversationHistory = [];
+  Timer? _trialTimer;
+  int _trialCount = 0;
+  static const int MAX_TRIAL_COUNT = 2;
+  static const int TRIAL_DURATION = 300; // 5 minutes in seconds
   String _recognizedText = '';
   bool _isListening = false;
   String _aiResponse = '';
@@ -114,9 +119,18 @@ class _ConversationActivityState extends State<ConversationActivity>
     });
   }
 
-  void _startConversation() {
+  void _startConversation() async {
+    // First check if we've already used all trials
+    final prefs = await SharedPreferences.getInstance();
+    int savedTrialCount = prefs.getInt('trial_count') ?? 0;
+
     if (_conversationEnded) {
       _showWarningDialog();
+      return;
+    }
+
+    if (savedTrialCount >= MAX_TRIAL_COUNT) {
+      _showPurchaseDialog();
       return;
     }
 
@@ -124,6 +138,17 @@ class _ConversationActivityState extends State<ConversationActivity>
       _isConversationActive = true;
       _isInitializing = true;
       _conversationEnded = false;
+    });
+
+    // Increment and save trial count
+    savedTrialCount++;
+    await prefs.setInt('trial_count', savedTrialCount);
+    _trialCount = savedTrialCount;
+
+    // Start trial timer
+    _trialTimer?.cancel();
+    _trialTimer = Timer(Duration(seconds: TRIAL_DURATION), () {
+      _stopConversation();
     });
 
     // Start listening immediately when conversation starts
@@ -154,10 +179,18 @@ class _ConversationActivityState extends State<ConversationActivity>
   void initState() {
     super.initState();
     _initializeHandlers();
+    _loadTrialCount();
 
     // Add speech initialization status check
     _speechHandler?.initializeAndCheck().then((_) {
       setState(() {}); // Trigger rebuild after initialization
+    });
+  }
+
+  Future<void> _loadTrialCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _trialCount = prefs.getInt('trial_count') ?? 0;
     });
   }
 
@@ -238,17 +271,21 @@ class _ConversationActivityState extends State<ConversationActivity>
     });
   }
 
-  void _stopConversation() {
-    if (_hasTalked) {
-      _showPurchaseDialog();
-    } else {
-      _speechHandler?.stopListening();
-      setState(() {
-        _isConversationActive = false;
-        _isProcessing = false;
-        _conversationEnded = true;
-      });
-    }
+  void _stopConversation() async {
+    _trialTimer?.cancel();
+    _speechHandler?.stopListening();
+
+    final prefs = await SharedPreferences.getInstance();
+    int savedTrialCount = prefs.getInt('trial_count') ?? 0;
+
+    setState(() {
+      _isConversationActive = false;
+      _isProcessing = false;
+      _conversationEnded = true;
+      if (savedTrialCount >= MAX_TRIAL_COUNT) {
+        _showPurchaseDialog();
+      }
+    });
   }
 
   void _showWarningDialog() {
@@ -332,6 +369,7 @@ class _ConversationActivityState extends State<ConversationActivity>
     _speechHandler?.dispose();
     _conversationController.dispose();
     _ttsServiceHandler?.dispose();
+    _trialTimer?.cancel();
     super.dispose();
   }
 
