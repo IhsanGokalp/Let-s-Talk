@@ -2,7 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class TrialService {
   static const String _trialCountKey = 'trial_count';
-  static const int maxTrials = 2;
+  static const int maxTrials = 2; // You can adjust this number as needed
 
   static Future<int> getTrialCount() async {
     final prefs = await SharedPreferences.getInstance();

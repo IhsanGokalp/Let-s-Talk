@@ -13,6 +13,7 @@ import 'package:lets_tallk/services/conversation_service.dart';
 import 'package:lets_tallk/models/chat_message.dart'; // Add this import
 import '../models/conversation_import_result.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'conversation_history_page.dart';
 
 class ConversationActivity extends StatefulWidget {
   final UserData userData;
@@ -36,10 +37,6 @@ class _ConversationActivityState extends State<ConversationActivity>
   bool _hasTalked = false;
   bool _conversationEnded = false;
   final List<Map<String, String>> _conversationHistory = [];
-  Timer? _trialTimer;
-  int _trialCount = 0;
-  static const int MAX_TRIAL_COUNT = 2;
-  static const int TRIAL_DURATION = 300; // 5 minutes in seconds
   String _recognizedText = '';
   bool _isListening = false;
   String _aiResponse = '';
@@ -120,39 +117,24 @@ class _ConversationActivityState extends State<ConversationActivity>
   }
 
   void _startConversation() async {
-    // First check if we've already used all trials
-    final prefs = await SharedPreferences.getInstance();
-    int savedTrialCount = prefs.getInt('trial_count') ?? 0;
-
     if (_conversationEnded) {
-      _showWarningDialog();
-      return;
-    }
-
-    if (savedTrialCount >= MAX_TRIAL_COUNT) {
-      _showPurchaseDialog();
-      return;
+      setState(() {
+        _conversationEnded = false; // Reset conversation ended state
+      });
     }
 
     setState(() {
       _isConversationActive = true;
       _isInitializing = true;
-      _conversationEnded = false;
-    });
-
-    // Increment and save trial count
-    savedTrialCount++;
-    await prefs.setInt('trial_count', savedTrialCount);
-    _trialCount = savedTrialCount;
-
-    // Start trial timer
-    _trialTimer?.cancel();
-    _trialTimer = Timer(Duration(seconds: TRIAL_DURATION), () {
-      _stopConversation();
     });
 
     // Start listening immediately when conversation starts
     _startListening();
+
+    // Send initial prompt if this is the start of conversation
+    if (_messages.isEmpty) {
+      _sendInitialPrompt();
+    }
   }
 
   void _sendInitialPrompt() {
@@ -179,18 +161,10 @@ class _ConversationActivityState extends State<ConversationActivity>
   void initState() {
     super.initState();
     _initializeHandlers();
-    _loadTrialCount();
 
     // Add speech initialization status check
     _speechHandler?.initializeAndCheck().then((_) {
       setState(() {}); // Trigger rebuild after initialization
-    });
-  }
-
-  Future<void> _loadTrialCount() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _trialCount = prefs.getInt('trial_count') ?? 0;
     });
   }
 
@@ -272,19 +246,32 @@ class _ConversationActivityState extends State<ConversationActivity>
   }
 
   void _stopConversation() async {
-    _trialTimer?.cancel();
     _speechHandler?.stopListening();
 
-    final prefs = await SharedPreferences.getInstance();
-    int savedTrialCount = prefs.getInt('trial_count') ?? 0;
+    // Save the current conversation if there are messages
+    if (_messages.isNotEmpty) {
+      try {
+        final description =
+            "Conversation ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}";
+        final path = await _conversationService.exportConversation(
+          _messages,
+          description: description,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Conversation saved')),
+        );
+      } catch (e) {
+        debugPrint('Error saving conversation: $e');
+      }
+    }
 
     setState(() {
       _isConversationActive = false;
       _isProcessing = false;
-      _conversationEnded = true;
-      if (savedTrialCount >= MAX_TRIAL_COUNT) {
-        _showPurchaseDialog();
-      }
+      _conversationEnded = false;
+      _messages.clear();
+      _recognizedText = '';
+      _conversationHistory.clear();
     });
   }
 
@@ -369,7 +356,6 @@ class _ConversationActivityState extends State<ConversationActivity>
     _speechHandler?.dispose();
     _conversationController.dispose();
     _ttsServiceHandler?.dispose();
-    _trialTimer?.cancel();
     super.dispose();
   }
 
@@ -627,50 +613,6 @@ class _ConversationActivityState extends State<ConversationActivity>
         title: Text("${widget.userData.name} Let's Talk"),
         backgroundColor: Colors.white,
         actions: [
-          PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert), // 3 dots icon
-            onSelected: (String result) {
-              if (result == 'history') {
-                _showHistoryDialog();
-              } else if (result == 'save') {
-                _showSaveDialog();
-              } else if (result == 'edit') {
-                _navigateToSetup3();
-              }
-            },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
-                value: 'history',
-                child: ListTile(
-                  leading: Icon(Icons.history),
-                  title: Text('History'),
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'save',
-                child: ListTile(
-                  leading: Icon(Icons.save),
-                  title: Text('Save'),
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'edit',
-                child: ListTile(
-                  leading: Icon(Icons.edit),
-                  title: Text('Edit Preferences'),
-                ),
-              ),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // ... (rest of your status icons)
-              ],
-            ),
-          ),
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
             child: Row(
@@ -769,32 +711,16 @@ class _ConversationActivityState extends State<ConversationActivity>
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8.0),
                     child: ElevatedButton(
-                      onPressed: _startConversation,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        padding: EdgeInsets.symmetric(vertical: 15),
-                      ),
-                      child: Text(
-                        _isConversationActive ? "Active" : "Start",
-                        style: TextStyle(fontSize: 16),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: ElevatedButton(
-                      onPressed: _stopConversation,
+                      onPressed: _isConversationActive
+                          ? _stopConversation
+                          : _startConversation,
                       style: ElevatedButton.styleFrom(
                         backgroundColor:
-                            _isConversationActive ? Colors.red : Colors.grey,
+                            _isConversationActive ? Colors.red : Colors.blue,
                         padding: EdgeInsets.symmetric(vertical: 15),
                       ),
                       child: Text(
-                        "End",
+                        _isConversationActive ? "End Conversation" : "Start",
                         style: TextStyle(fontSize: 16),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -802,6 +728,40 @@ class _ConversationActivityState extends State<ConversationActivity>
                     ),
                   ),
                 ),
+                if (!_isConversationActive) // Only show Saved Quotes when conversation is not active
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final result =
+                              await Navigator.push<ConversationImportResult>(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    ConversationHistoryPage()),
+                          );
+
+                          if (result != null) {
+                            setState(() {
+                              _messages.clear();
+                              _messages.addAll(result.messages);
+                            });
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          padding: EdgeInsets.symmetric(vertical: 15),
+                        ),
+                        child: Text(
+                          "Saved Quotes",
+                          style: TextStyle(fontSize: 16),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
             if (_isProcessing) Center(child: CircularProgressIndicator()),

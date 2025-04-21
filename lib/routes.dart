@@ -7,6 +7,7 @@ import 'screens/review_page.dart';
 import 'models/user_data.dart';
 import 'screens/conversation_activity.dart';
 import 'screens/conversation_history_screen.dart';
+import 'screens/conversation_history_page.dart';
 
 Route<dynamic>? generateRoute(RouteSettings settings) {
   switch (settings.name) {
@@ -48,7 +49,7 @@ Route<dynamic>? generateRoute(RouteSettings settings) {
           builder: (_) => ConversationActivity(userData: userData));
 
     case '/history':
-      return MaterialPageRoute(builder: (_) => ConversationHistoryScreen());
+      return MaterialPageRoute(builder: (_) => ConversationHistoryPage());
 
     default:
       // Return a 404 error page
